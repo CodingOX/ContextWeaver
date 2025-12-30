@@ -196,14 +196,21 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
       );
 
       // 自愈：检查 unchanged 文件是否需要补索引
-      // 将 status 改为 'modified' 确保 indexer 会处理这些文件
+      // 需要重新处理这些文件以获取完整的 chunks（unchanged 状态的 chunks 是空的）
       const healingPathSet = new Set(getFilesNeedingVectorIndex(db));
-      const healingFiles = results
+      const healingFilePaths = results
         .filter((r) => r.status === 'unchanged' && healingPathSet.has(r.relPath))
-        .map((r) => ({ ...r, status: 'modified' as const }));
+        .map((r) => r.absPath);
 
-      if (healingFiles.length > 0) {
-        logger.info({ count: healingFiles.length }, '自愈：发现需要补索引的文件');
+      let healingFiles: ProcessResult[] = [];
+      if (healingFilePaths.length > 0) {
+        logger.info({ count: healingFilePaths.length }, '自愈：发现需要补索引的文件');
+        // 重新处理这些文件（传入空的 knownFiles 强制重新读取和分片）
+        const processedHealingFiles = await processFiles(rootPath, healingFilePaths, new Map());
+        // 将状态改为 modified 确保 indexer 会处理
+        healingFiles = processedHealingFiles
+          .filter((r) => r.status === 'added' || r.status === 'modified')
+          .map((r) => ({ ...r, status: 'modified' as const }));
       }
 
       // 为 deleted 文件创建占位 ProcessResult
