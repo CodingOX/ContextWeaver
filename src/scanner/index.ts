@@ -196,10 +196,11 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
       );
 
       // 自愈：检查 unchanged 文件是否需要补索引
+      // 将 status 改为 'modified' 确保 indexer 会处理这些文件
       const healingPathSet = new Set(getFilesNeedingVectorIndex(db));
-      const healingFiles = results.filter(
-        (r) => r.status === 'unchanged' && healingPathSet.has(r.relPath),
-      );
+      const healingFiles = results
+        .filter((r) => r.status === 'unchanged' && healingPathSet.has(r.relPath))
+        .map((r) => ({ ...r, status: 'modified' as const }));
 
       if (healingFiles.length > 0) {
         logger.info({ count: healingFiles.length }, '自愈：发现需要补索引的文件');

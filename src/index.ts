@@ -95,7 +95,7 @@ cli
         force: options.force,
         onProgress: (current, total) => {
           const percent = ((current / total) * 100).toFixed(1);
-          process.stdout.write(`\r进度: ${current}/${total} (${percent}%)`);
+          logger.info({ current, total, percent: `${percent}%` }, '扫描进度');
         },
       });
 
