@@ -10,6 +10,12 @@ export interface LanguageSpecConfig {
   hierarchy: Set<string>;
   /** 提取名称的字段列表（按优先级顺序） */
   nameFields: string[];
+  /** 名称节点类型（用于遍历 namedChildren 时识别名称节点） */
+  nameNodeTypes: Set<string>;
+  /** 节点类型到前缀的映射（用于生成 contextPath） */
+  prefixMap: Record<string, string>;
+  /** 注释节点类型（用于前向吸附） */
+  commentTypes: Set<string>;
 }
 
 /**
@@ -18,20 +24,28 @@ export interface LanguageSpecConfig {
 const LANGUAGE_SPECS: Record<string, LanguageSpecConfig> = {
   typescript: {
     hierarchy: new Set([
-      // 类和接口
       'class_declaration',
       'abstract_class_declaration',
       'interface_declaration',
-      // 函数
       'function_declaration',
       'generator_function_declaration',
       'method_definition',
       'arrow_function',
-      // 模块
       'export_statement',
       'import_statement',
     ]),
     nameFields: ['name', 'id'],
+    nameNodeTypes: new Set(['identifier', 'type_identifier', 'property_identifier']),
+    prefixMap: {
+      class_declaration: 'class ',
+      abstract_class_declaration: 'abstract class ',
+      interface_declaration: 'interface ',
+      function_declaration: 'fn ',
+      generator_function_declaration: 'fn* ',
+      method_definition: '',
+      arrow_function: '',
+    },
+    commentTypes: new Set(['comment']),
   },
 
   javascript: {
@@ -43,60 +57,97 @@ const LANGUAGE_SPECS: Record<string, LanguageSpecConfig> = {
       'arrow_function',
     ]),
     nameFields: ['name', 'id'],
+    nameNodeTypes: new Set(['identifier', 'property_identifier']),
+    prefixMap: {
+      class_declaration: 'class ',
+      function_declaration: 'fn ',
+      generator_function_declaration: 'fn* ',
+      method_definition: '',
+      arrow_function: '',
+    },
+    commentTypes: new Set(['comment']),
   },
 
   python: {
     hierarchy: new Set(['class_definition', 'function_definition', 'decorated_definition']),
     nameFields: ['name'],
+    nameNodeTypes: new Set(['identifier']),
+    prefixMap: {
+      class_definition: 'class ',
+      function_definition: 'def ',
+      decorated_definition: '',
+    },
+    commentTypes: new Set(['comment']),
   },
 
   go: {
     hierarchy: new Set([
-      // 函数和方法
       'function_declaration',
       'method_declaration',
-      // 类型定义
       'type_spec',
       'type_declaration',
-      // 结构体和接口
       'struct_type',
       'interface_type',
     ]),
     nameFields: ['name'],
+    nameNodeTypes: new Set(['identifier', 'type_identifier', 'field_identifier']),
+    prefixMap: {
+      function_declaration: 'func ',
+      method_declaration: 'func ',
+      type_spec: 'type ',
+      type_declaration: 'type ',
+      struct_type: 'struct ',
+      interface_type: 'interface ',
+    },
+    commentTypes: new Set(['comment']),
   },
 
   rust: {
     hierarchy: new Set([
-      // 函数
       'function_item',
-      // 结构体、枚举、trait
       'struct_item',
       'enum_item',
       'trait_item',
-      // impl 块
       'impl_item',
-      // 模块
       'mod_item',
-      // 类型别名
       'type_item',
     ]),
     nameFields: ['name'],
+    nameNodeTypes: new Set(['identifier', 'type_identifier']),
+    prefixMap: {
+      function_item: 'fn ',
+      struct_item: 'struct ',
+      enum_item: 'enum ',
+      trait_item: 'trait ',
+      impl_item: 'impl ',
+      mod_item: 'mod ',
+      type_item: 'type ',
+    },
+    commentTypes: new Set(['line_comment', 'block_comment']),
   },
 
   java: {
     hierarchy: new Set([
-      // 类和接口
       'class_declaration',
       'interface_declaration',
       'enum_declaration',
       'annotation_type_declaration',
-      // 方法和构造函数
       'method_declaration',
       'constructor_declaration',
-      // 记录类型 (Java 14+)
       'record_declaration',
     ]),
     nameFields: ['name', 'identifier'],
+    nameNodeTypes: new Set(['identifier']),
+    prefixMap: {
+      class_declaration: 'class ',
+      interface_declaration: 'interface ',
+      enum_declaration: 'enum ',
+      annotation_type_declaration: '@interface ',
+      method_declaration: '',
+      constructor_declaration: '',
+      record_declaration: 'record ',
+    },
+    commentTypes: new Set(['line_comment', 'block_comment']),
   },
 };
 

@@ -8,7 +8,7 @@
  * 4. SourceAdapter - 统一索引域适配（UTF-16/UTF-8）
  */
 import type Parser from 'tree-sitter';
-import { getLanguageSpec } from './LanguageSpec.js';
+import { getLanguageSpec, type LanguageSpecConfig } from './LanguageSpec.js';
 import { SourceAdapter } from './SourceAdapter.js';
 import type { ChunkMetadata, ProcessedChunk, SplitterConfig, Window } from './types.js';
 
@@ -19,11 +19,11 @@ export class SemanticSplitter {
   private language!: string;
 
   constructor(config: Partial<SplitterConfig> = {}) {
-    const maxChunkSize = config.maxChunkSize ?? 1000;
+    const maxChunkSize = config.maxChunkSize ?? 2500;
     this.config = {
       maxChunkSize,
-      minChunkSize: config.minChunkSize ?? 50,
-      chunkOverlap: config.chunkOverlap ?? 100,
+      minChunkSize: config.minChunkSize ?? 100,
+      chunkOverlap: config.chunkOverlap ?? 200,
       // 物理字符硬上限：默认为 maxChunkSize * 4（假设 1 token ≈ 4 chars）
       maxRawChars: config.maxRawChars ?? maxChunkSize * 4,
     };
@@ -217,36 +217,10 @@ export class SemanticSplitter {
     const spec = getLanguageSpec(this.language);
 
     if (spec?.hierarchy.has(node.type)) {
-      // 尝试提取名称
-      // 注意：tree-sitter 0.20.x 没有 childForFieldName 方法
-      // 使用 namedChildren 遍历查找 identifier/name 类型的子节点
-      let name: string | null = null;
-
-      // 方式1: 遍历命名子节点，找第一个 identifier 类型的
-      for (const child of node.namedChildren) {
-        if (
-          child.type === 'identifier' ||
-          child.type === 'type_identifier' ||
-          child.type === 'name'
-        ) {
-          name = child.text;
-          break;
-        }
-      }
-
-      // 方式2: 如果没找到，尝试第一个命名子节点的文本
-      if (!name && node.firstNamedChild) {
-        const firstChild = node.firstNamedChild;
-        // 只使用简短的标识符作为名称
-        if (firstChild.text.length <= 100 && !firstChild.text.includes('\n')) {
-          name = firstChild.text;
-        }
-      }
-
+      const name = this.extractNodeName(node, spec);
       if (name) {
-        // 添加类型前缀以区分 class/function 等
-        const typePrefix = this.getTypePrefix(node.type);
-        nextContext = [...context, `${typePrefix}${name}`];
+        const prefix = spec.prefixMap[node.type] ?? '';
+        nextContext = [...context, `${prefix}${name}`];
       }
     }
 
@@ -272,22 +246,38 @@ export class SemanticSplitter {
   }
 
   /**
-   * 获取节点类型的简短前缀
+   * 从节点中提取名称（数据驱动）
    */
-  private getTypePrefix(nodeType: string): string {
-    if (nodeType.includes('class')) return 'class ';
-    if (nodeType.includes('interface')) return 'interface ';
-    if (nodeType.includes('method')) return 'method ';
-    if (nodeType.includes('function')) return 'function ';
-    return '';
+  private extractNodeName(node: Parser.SyntaxNode, spec: LanguageSpecConfig): string | null {
+    // 遍历命名子节点，按 nameNodeTypes 匹配
+    for (const child of node.namedChildren) {
+      if (spec.nameNodeTypes.has(child.type)) {
+        return child.text;
+      }
+    }
+
+    // fallback: 第一个命名子节点（短文本）
+    if (node.firstNamedChild) {
+      const firstChild = node.firstNamedChild;
+      if (firstChild.text.length <= 100 && !firstChild.text.includes('\n')) {
+        return firstChild.text;
+      }
+    }
+
+    return null;
   }
 
   /**
    * Gap-Aware 相邻窗口合并
    *
-   * 使用 NWS + Raw 双预算策略：
+   * 使用三重预算策略：
    * - NWS 预算：控制有效代码量
    * - Raw 预算：控制物理字符数，防止大量注释撑爆 Token
+   * - 语义边界惩罚：不同 contextPath 的窗口合并门槛更高
+   *
+   * 前向吸附策略：
+   * - 如果当前窗口以 comment 结尾，将 comment 推到下一个窗口
+   * - 保证 JSDoc/注释与其描述的代码在同一个 chunk
    */
   private mergeAdjacentWindows(windows: Window[]): Window[] {
     if (windows.length === 0) return [];
@@ -297,6 +287,15 @@ export class SemanticSplitter {
 
     for (let i = 1; i < windows.length; i++) {
       const next = windows[i];
+
+      // 0. 前向吸附：如果 current 以 comment 结尾，将其推到 next
+      this.forwardAbsorbComments(current, next);
+
+      // 如果 current 被吸附后变空，直接用 next 替代
+      if (current.nodes.length === 0) {
+        current = next;
+        continue;
+      }
 
       // 1. 计算边界
       const currentStart = current.nodes[0].startIndex;
@@ -309,29 +308,34 @@ export class SemanticSplitter {
       const combinedNws = current.size + gapNws + next.size;
 
       // 3. 计算 Raw 大小（物理预算）
-      // 合并后的总物理长度 = 从 current 开头到 next 结尾的跨度
       const combinedRawLen = nextEnd - currentStart;
 
-      // 4. 双预算决策
-      const isTiny = current.size < this.config.minChunkSize;
+      // 4. 语义边界检测
+      // 如果两个窗口属于不同的语义单元（contextPath 不同），提高合并门槛
+      const sameContext = this.isSameContext(current.contextPath, next.contextPath);
+      const boundaryPenalty = sameContext ? 1.0 : 0.7; // 跨边界时预算打 7 折
 
-      // NWS 预算检查
+      // 5. 三重预算决策
+      const isTiny = current.size < this.config.minChunkSize;
+      const effectiveBudget = this.config.maxChunkSize * boundaryPenalty;
+
+      // NWS 预算检查（考虑语义边界惩罚）
       const fitsNwsBudget =
-        combinedNws <= this.config.maxChunkSize ||
-        (isTiny && combinedNws < this.config.maxChunkSize * 1.5);
+        combinedNws <= effectiveBudget || (isTiny && combinedNws < effectiveBudget * 1.5);
 
       // Raw 预算检查（熔断机制）
-      const fitsRawBudget = combinedRawLen <= this.config.maxRawChars;
+      const fitsRawBudget = combinedRawLen <= this.config.maxRawChars * boundaryPenalty;
 
-      // 必须同时满足两个预算才能合并
+      // 必须同时满足预算才能合并
       if (fitsNwsBudget && fitsRawBudget) {
-        // 合并：current 吞并 next
         current.nodes.push(...next.nodes);
         current.size = combinedNws;
-        // P0 修复：更新为两者的公共前缀（LCA），避免 breadcrumb 误标
-        current.contextPath = this.commonPrefix(current.contextPath, next.contextPath);
+        // 保留更具体的 contextPath（较长的那个）
+        // 因为合并后的 chunk 内容属于更具体的语义单元
+        if (next.contextPath.length > current.contextPath.length) {
+          current.contextPath = next.contextPath;
+        }
       } else {
-        // 截断：输出 current，next 成为新的 current
         merged.push(current);
         current = next;
       }
@@ -339,6 +343,73 @@ export class SemanticSplitter {
 
     merged.push(current);
     return merged;
+  }
+
+  /**
+   * 前向吸附：将 current 尾部的 comment 节点推到 next 头部
+   *
+   * 这确保 JSDoc/docstring/注释与其描述的函数/方法在同一个 chunk 中，
+   * 而不是被切到前一个 chunk 的末尾。
+   *
+   * 注意：此方法会直接修改 current 和 next
+   */
+  private forwardAbsorbComments(current: Window, next: Window): void {
+    // 获取当前语言的注释节点类型
+    const spec = getLanguageSpec(this.language);
+    const commentTypes = spec?.commentTypes ?? new Set(['comment']);
+
+    // 从 current 尾部收集连续的 comment 节点
+    const absorbedNodes: Parser.SyntaxNode[] = [];
+    let absorbedNws = 0;
+
+    while (current.nodes.length > 0) {
+      const lastNode = current.nodes[current.nodes.length - 1];
+      if (commentTypes.has(lastNode.type)) {
+        current.nodes.pop();
+        const nodeNws = this.adapter.nws(lastNode.startIndex, lastNode.endIndex);
+        absorbedNodes.unshift(lastNode); // 保持顺序
+        absorbedNws += nodeNws;
+        current.size -= nodeNws;
+      } else {
+        break;
+      }
+    }
+
+    // 将吸附的 comment 推到 next 头部
+    if (absorbedNodes.length > 0) {
+      // 计算 gap（从最后一个 absorbed comment 到 next 第一个节点）
+      const gapNws =
+        next.nodes.length > 0
+          ? this.adapter.nws(
+              absorbedNodes[absorbedNodes.length - 1].endIndex,
+              next.nodes[0].startIndex,
+            )
+          : 0;
+
+      next.nodes.unshift(...absorbedNodes);
+      next.size += absorbedNws + gapNws;
+    }
+  }
+
+  /**
+   * 检查两个 contextPath 是否属于同一语义单元
+   *
+   * 规则：如果两者的公共前缀长度 >= 较短路径长度，认为是同一单元
+   * 例如：
+   * - ["file", "class A", "method foo"] 和 ["file", "class A", "method bar"] -> false（不同方法）
+   * - ["file", "class A"] 和 ["file", "class A", "method foo"] -> true（父子关系）
+   */
+  private isSameContext(a: string[], b: string[]): boolean {
+    const minLen = Math.min(a.length, b.length);
+    let commonLen = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (a[i] === b[i]) {
+        commonLen++;
+      } else {
+        break;
+      }
+    }
+    return commonLen >= minLen;
   }
 
   /**
@@ -445,25 +516,6 @@ export class SemanticSplitter {
     return Math.max(0, result);
   }
 
-  /**
-   * 计算两个路径数组的最长公共前缀（LCA）
-   *
-   * 用于合并窗口时更新 contextPath，避免 breadcrumb 误标
-   * 例如：["file", "class A", "method foo"] 和 ["file", "class A", "method bar"]
-   *       => ["file", "class A"]
-   */
-  private commonPrefix(a: string[], b: string[]): string[] {
-    const result: string[] = [];
-    const len = Math.min(a.length, b.length);
-    for (let i = 0; i < len; i++) {
-      if (a[i] === b[i]) {
-        result.push(a[i]);
-      } else {
-        break;
-      }
-    }
-    return result;
-  }
 }
 
 /**
