@@ -21,7 +21,20 @@ const MAX_FILE_SIZE = 100 * 1024; // 500KB
  * 需要兜底分片支持的目标语言集合
  * 这些语言的文件即使 AST 解析失败也会使用行分片保证可检索
  */
-const FALLBACK_LANGS = new Set(['python', 'go', 'rust', 'java', 'markdown', 'json']);
+const FALLBACK_LANGS = new Set([
+  'python',
+  'go',
+  'rust',
+  'java',
+  'kotlin',
+  'php',
+  'ruby',
+  'swift',
+  'dart',
+  'c_sharp',
+  'markdown',
+  'json',
+]);
 
 /**
  * 检查 JSON 文件是否应该跳过索引

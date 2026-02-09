@@ -6,3 +6,8 @@ dist
 .claude
 .ace-tool/
 .snow
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.tsbuildinfo

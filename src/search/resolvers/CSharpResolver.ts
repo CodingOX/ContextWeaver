@@ -11,9 +11,14 @@ export class CSharpResolver implements ImportResolver {
 
   extract(content: string): string[] {
     const imports: string[] = [];
-    // 匹配: using Namespace.Type; 或 using Alias = Namespace.Type;
-    // 不匹配: using static, global using
-    const pattern = /^\s*using\s+(?!static\s)(?!global\s)(?:\w+\s*=\s*)?([\w.]+);/gm;
+    // 匹配以下 C# using 形式：
+    // 1) using Namespace.Type;
+    // 2) using Alias = Namespace.Type;
+    // 3) using static Namespace.Type;
+    // 4) global using ...（包含以上三种）
+    // 兼容标识符前缀 @ 与别名限定符 ::（如 global::System.Text）
+    const pattern =
+      /^\s*(?:global\s+)?using\s+(?:static\s+)?(?:@?\w+\s*=\s*)?((?:@?\w+::)?@?\w+(?:\.@?\w+)*)\s*;/gm;
     for (const match of content.matchAll(pattern)) {
       imports.push(match[1]);
     }
@@ -23,9 +28,12 @@ export class CSharpResolver implements ImportResolver {
   resolve(importStr: string, currentFile: string, allFiles: Set<string>): string | null {
     // C# using: Namespace.Type -> Namespace/Type.cs
     // 命名空间通常与目录结构对应
+    // 归一化：去掉别名限定符（如 global::）与 @ 标识符前缀
+
+    const normalizedImport = importStr.replace(/^@?\w+::/, '').replace(/@/g, '');
 
     // 将命名空间转换为路径
-    const namespacePath = importStr.replace(/\./g, '/');
+    const namespacePath = normalizedImport.replace(/\./g, '/');
     const suffix = `/${namespacePath}.cs`;
 
     const candidates: string[] = [];
@@ -38,7 +46,7 @@ export class CSharpResolver implements ImportResolver {
     // 回退策略：尝试匹配最后一个类型名
     // 例如 System.Collections.Generic.List -> 找 List.cs
     if (candidates.length === 0) {
-      const parts = importStr.split('.');
+      const parts = normalizedImport.split('.');
       const typeName = parts[parts.length - 1];
       const typeSuffix = `/${typeName}.cs`;
 

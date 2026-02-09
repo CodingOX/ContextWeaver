@@ -24,7 +24,7 @@
 - **RRF 融合 (Reciprocal Rank Fusion)**：智能融合多路召回结果
 
 ### 🧠 AST 语义分片
-- **Tree-sitter 解析**：支持 TypeScript、JavaScript、Python、Go、Java、Rust 六大语言
+- **Tree-sitter 解析**：支持 TypeScript、JavaScript、Python、Go、Java、Rust、Kotlin、PHP、Ruby、Swift、Dart、C#
 - **Dual-Text 策略**：`displayCode` 用于展示，`vectorText` 用于 Embedding
 - **Gap-Aware 合并**：智能处理代码间隙，保持语义完整性
 - **Breadcrumb 注入**：向量文本包含层级路径，提升检索召回率
@@ -59,6 +59,26 @@ npm install -g @hsingjui/contextweaver
 
 # 或使用 pnpm
 pnpm add -g @hsingjui/contextweaver
+```
+
+### pnpm 全局安装（原生依赖批准）
+
+如果你使用的是 `pnpm v10+` 全局安装，首次运行前建议执行：
+
+```bash
+pnpm approve-builds -g
+```
+
+然后在交互界面里批准 `better-sqlite3`、`@keqingmoe/tree-sitter` 和
+`tree-sitter-*`。否则可能出现以下错误：
+
+- `Could not locate the bindings file`
+- `better_sqlite3.node` 缺失
+
+如果已经安装过但仍报错，可执行：
+
+```bash
+pnpm rebuild -g better-sqlite3 @keqingmoe/tree-sitter tree-sitter-*
 ```
 
 ### 初始化配置
@@ -118,6 +138,16 @@ cw search --information-request "数据库连接逻辑" --technical-terms "Datab
 ```bash
 # 启动 MCP 服务端（供 Claude 等 AI 助手使用）
 contextweaver mcp
+```
+
+### 运行测试
+
+```bash
+# 语言支持与解析器回归
+pnpm test
+
+# MCP 多语言端到端冒烟测试
+pnpm test:e2e:mcp
 ```
 
 ## 🔧 MCP 集成配置
@@ -319,6 +349,15 @@ ContextWeaver 通过 Tree-sitter 原生支持以下编程语言的 AST 解析：
 | Go | ✅ | ✅ | `.go` |
 | Java | ✅ | ✅ | `.java` |
 | Rust | ✅ | ✅ | `.rs` |
+| Kotlin | ✅ | ✅ | `.kt` |
+| PHP | ✅ | ✅ | `.php` |
+| Ruby | ✅ | ✅ | `.rb` |
+| Swift | ✅ | ✅ | `.swift` |
+| Dart | ✅ | ✅ | `.dart` |
+| C# | ✅ | ✅ | `.cs`, `.csx` |
+
+C# Import 解析支持 `using`、`using static`、`global using`、别名导入，
+并兼容 `global::` 与 `@` 标识符写法。
 
 其他语言会采用基于行的 Fallback 分片策略，仍可正常索引和搜索。
 

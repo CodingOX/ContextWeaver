@@ -319,7 +319,7 @@ export class GraphExpander {
    * 扩展 import 关系
    *
    * 解析 seed 文件中的 import 语句，获取被导入文件的 chunks
-   * 支持多语言：TypeScript/JavaScript, Python, Go, Java, Rust
+   * 支持多语言：TypeScript/JavaScript, Python, Go, Java, Kotlin, PHP, Ruby, Swift, Dart, Rust, C#
    */
   private async expandImports(
     seeds: ScoredChunk[],

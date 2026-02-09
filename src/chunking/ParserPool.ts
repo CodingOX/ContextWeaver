@@ -15,6 +15,11 @@ const GRAMMAR_MODULES: Record<string, string> = {
   go: 'tree-sitter-go',
   rust: 'tree-sitter-rust',
   java: 'tree-sitter-java',
+  kotlin: 'tree-sitter-kotlin',
+  php: 'tree-sitter-php',
+  ruby: 'tree-sitter-ruby',
+  swift: 'tree-sitter-swift',
+  dart: 'tree-sitter-dart',
   c: 'tree-sitter-c',
   cpp: 'tree-sitter-cpp',
   c_sharp: 'tree-sitter-c-sharp',
@@ -52,6 +57,8 @@ async function loadGrammar(language: string): Promise<TreeSitterLanguage | null>
     // tree-sitter-typescript 包特殊处理（包含 typescript 和 tsx 两个语言）
     if (language === 'typescript') {
       grammar = grammarModule.default?.typescript ?? grammarModule.typescript;
+    } else if (language === 'php') {
+      grammar = grammarModule.default?.php ?? grammarModule.php;
     } else {
       // 其他语言包: 0.20.x 版本直接使用 default export
       const exported = grammarModule.default ?? grammarModule;
