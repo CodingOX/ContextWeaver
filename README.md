@@ -55,10 +55,10 @@
 
 ```bash
 # 全局安装
-npm install -g @hsingjui/contextweaver
+npm install -g @alistar.max/contextweaver
 
 # 或使用 pnpm
-pnpm add -g @hsingjui/contextweaver
+pnpm add -g @alistar.max/contextweaver
 ```
 
 ### pnpm 全局安装（原生依赖批准）

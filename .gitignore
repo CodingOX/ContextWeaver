@@ -11,3 +11,6 @@ dist
 .DS_Store
 *.log
 *.tsbuildinfo
+
+!docs/logs/
+!docs/logs/*.md
