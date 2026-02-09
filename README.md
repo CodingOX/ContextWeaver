@@ -243,8 +243,8 @@ contextweaver/
 │   ├── index.ts              # CLI 入口
 │   ├── config.ts             # 配置管理（环境变量）
 │   ├── api/                  # 外部 API 封装
-│   │   ├── embed.ts          # Embedding API
-│   │   └── rerank.ts         # Reranker API
+│   │   ├── embedding.ts      # Embedding API
+│   │   └── reranker.ts       # Reranker API
 │   ├── chunking/             # 语义分片
 │   │   ├── SemanticSplitter.ts   # AST 语义分片器
 │   │   ├── SourceAdapter.ts      # 源码适配器
@@ -253,7 +253,10 @@ contextweaver/
 │   ├── scanner/              # 文件扫描
 │   │   ├── crawler.ts        # 文件系统遍历
 │   │   ├── processor.ts      # 文件处理
-│   │   └── filter.ts         # 过滤规则
+│   │   ├── filter.ts         # 过滤规则
+│   │   ├── language.ts       # 扩展名语言映射
+│   │   ├── hash.ts           # 文件哈希工具
+│   │   └── index.ts          # Scanner 聚合导出
 │   ├── indexer/              # 索引器
 │   │   └── index.ts          # 批量索引逻辑
 │   ├── vectorStore/          # 向量存储
@@ -272,14 +275,28 @@ contextweaver/
 │   │       ├── PythonResolver.ts
 │   │       ├── GoResolver.ts
 │   │       ├── JavaResolver.ts
-│   │       └── RustResolver.ts
+│   │       ├── RustResolver.ts
+│   │       ├── KotlinResolver.ts
+│   │       ├── PhpResolver.ts
+│   │       ├── RubyResolver.ts
+│   │       ├── SwiftResolver.ts
+│   │       ├── DartResolver.ts
+│   │       ├── CSharpResolver.ts
+│   │       ├── CppResolver.ts
+│   │       ├── types.ts
+│   │       └── index.ts
 │   ├── mcp/                  # MCP 服务端
 │   │   ├── server.ts         # MCP 服务器实现
-│   │   ├── main.ts           # MCP 入口
 │   │   └── tools/
-│   │       └── codebaseRetrieval.ts  # 代码检索工具
+│   │       ├── codebaseRetrieval.ts  # 代码检索工具
+│   │       └── index.ts      # MCP 工具导出
 │   └── utils/                # 工具函数
-│       └── logger.ts         # 日志系统
+│       ├── logger.ts         # 日志系统
+│       ├── encoding.ts       # 编码识别与转换
+│       └── lock.ts           # 文件锁
+├── tests/                    # 回归测试
+│   ├── language-support.test.ts
+│   └── mcp-e2e-smoke.ts
 ├── package.json
 └── tsconfig.json
 ```
