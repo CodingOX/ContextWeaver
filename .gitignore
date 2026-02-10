@@ -14,3 +14,4 @@ dist
 
 !docs/logs/
 !docs/logs/*.md
+*.tgz

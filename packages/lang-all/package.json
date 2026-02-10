@@ -1,0 +1,33 @@
+{
+  "name": "@alistar.max/contextweaver-lang-all",
+  "version": "0.0.8",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@alistar.max/contextweaver-lang-typescript": "0.0.8",
+    "@alistar.max/contextweaver-lang-kotlin": "0.0.8",
+    "@alistar.max/contextweaver-lang-csharp": "0.0.8",
+    "@alistar.max/contextweaver-lang-cpp": "0.0.8",
+    "@alistar.max/contextweaver-lang-java": "0.0.8",
+    "@alistar.max/contextweaver-lang-ruby": "0.0.8",
+    "@alistar.max/contextweaver-lang-c": "0.0.8",
+    "@alistar.max/contextweaver-lang-php": "0.0.8",
+    "@alistar.max/contextweaver-lang-rust": "0.0.8",
+    "@alistar.max/contextweaver-lang-swift": "0.0.8"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ]
+}

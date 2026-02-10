@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (e.g., 0.1.1) (must have tag v0.1.1)"
+        description: 'Version to publish (e.g., 0.1.1) (must have tag v0.1.1)'
         required: true
         type: string
 
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code (tag on dispatch)
+      - name: Checkout code (tag on dispatch)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -48,10 +48,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-          cache: "pnpm"
-      
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+
       - name: Upgrade npm for Trusted Publishing (OIDC)
         run: |
           npm i -g npm@^11.5.1
@@ -62,32 +62,92 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm run build:release
+      - name: Run tests
+        run: pnpm test
 
-      - name: Verify tag matches package.json version
+      - name: Build all packages
         run: |
-          PKG="$(node -p "require('./package.json').version")"
-          if [ "${{ steps.rel.outputs.ver }}" != "$PKG" ]; then
-            echo "Version mismatch: tag v${{ steps.rel.outputs.ver }} != package.json $PKG"
-            exit 1
-          fi
+          pnpm build
+          pnpm -r build
 
-      - name: Check if version already exists on npm (dispatch only)
-        if: github.event_name == 'workflow_dispatch'
-        id: npmcheck
+      - name: Verify versions match tag
         run: |
-          if npm view @hsingjui/contextweaver@${{ steps.rel.outputs.ver }} version >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          VER="${{ steps.rel.outputs.ver }}"
+          node - <<'NODE'
+          const fs = require('fs');
+          const ver = process.env.VER;
+          const files = [
+            ['@alistar.max/contextweaver', 'package.json'],
+            ['@alistar.max/contextweaver-lang-typescript', 'packages/lang-typescript/package.json'],
+            ['@alistar.max/contextweaver-lang-kotlin', 'packages/lang-kotlin/package.json'],
+            ['@alistar.max/contextweaver-lang-csharp', 'packages/lang-csharp/package.json'],
+            ['@alistar.max/contextweaver-lang-cpp', 'packages/lang-cpp/package.json'],
+            ['@alistar.max/contextweaver-lang-java', 'packages/lang-java/package.json'],
+            ['@alistar.max/contextweaver-lang-ruby', 'packages/lang-ruby/package.json'],
+            ['@alistar.max/contextweaver-lang-c', 'packages/lang-c/package.json'],
+            ['@alistar.max/contextweaver-lang-php', 'packages/lang-php/package.json'],
+            ['@alistar.max/contextweaver-lang-rust', 'packages/lang-rust/package.json'],
+            ['@alistar.max/contextweaver-lang-swift', 'packages/lang-swift/package.json'],
+            ['@alistar.max/contextweaver-lang-all', 'packages/lang-all/package.json'],
+            ['@alistar.max/contextweaver-lang-ts21', 'packages/lang-ts21/package.json'],
+            ['@alistar.max/contextweaver-lang-ts22', 'packages/lang-ts22/package.json'],
+          ];
+          let ok = true;
+          for (const [name, file] of files) {
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (pkg.version !== ver) {
+              console.error(`${name} version mismatch: ${pkg.version} != ${ver}`);
+              ok = false;
+            }
+          }
+          if (!ok) process.exit(1);
+          NODE
+        env:
+          VER: ${{ steps.rel.outputs.ver }}
 
-      - name: Publish to NPM
-        if: github.event_name != 'workflow_dispatch' || steps.npmcheck.outputs.exists != 'true'
-        run: npm publish --no-git-checks --access public --provenance
+      - name: Publish packages (plugins first, then main)
+        run: |
+          set -euo pipefail
+          VER="${{ steps.rel.outputs.ver }}"
 
-      # push tag 和手动重跑都创建/更新 GitHub Release（手动重跑时显式指定 tag_name）
+          publish_if_needed() {
+            local PKG="$1"
+            local DIR="$2"
+
+            if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+              echo "Skip publish: $PKG@$VER already exists"
+              return 0
+            fi
+
+            echo "Publishing $PKG@$VER from $DIR"
+            if [ "$DIR" = "." ]; then
+              npm publish --no-git-checks --access public --provenance
+            else
+              (
+                cd "$DIR"
+                npm publish --no-git-checks --access public --provenance
+              )
+            fi
+          }
+
+          publish_if_needed "@alistar.max/contextweaver-lang-typescript" "packages/lang-typescript"
+          publish_if_needed "@alistar.max/contextweaver-lang-kotlin" "packages/lang-kotlin"
+          publish_if_needed "@alistar.max/contextweaver-lang-csharp" "packages/lang-csharp"
+          publish_if_needed "@alistar.max/contextweaver-lang-cpp" "packages/lang-cpp"
+          publish_if_needed "@alistar.max/contextweaver-lang-java" "packages/lang-java"
+          publish_if_needed "@alistar.max/contextweaver-lang-ruby" "packages/lang-ruby"
+          publish_if_needed "@alistar.max/contextweaver-lang-c" "packages/lang-c"
+          publish_if_needed "@alistar.max/contextweaver-lang-php" "packages/lang-php"
+          publish_if_needed "@alistar.max/contextweaver-lang-rust" "packages/lang-rust"
+          publish_if_needed "@alistar.max/contextweaver-lang-swift" "packages/lang-swift"
+          publish_if_needed "@alistar.max/contextweaver-lang-all" "packages/lang-all"
+
+          # 兼容层插件（保留发布）
+          publish_if_needed "@alistar.max/contextweaver-lang-ts21" "packages/lang-ts21"
+          publish_if_needed "@alistar.max/contextweaver-lang-ts22" "packages/lang-ts22"
+
+          publish_if_needed "@alistar.max/contextweaver" "."
+
       - name: Create GitHub Release
         if: startsWith(steps.rel.outputs.tag, 'v')
         uses: softprops/action-gh-release@v2
@@ -99,9 +159,28 @@ jobs:
           body: |
             ## 🚀 ContextWeaver ${{ steps.rel.outputs.tag }}
 
-            ### Installation
+            ### 版本亮点
+            - 支持 Node.js 24（Node 要求：`>=20 <25`）
+            - 主包默认内置 JavaScript / Python / Go 的 AST 分片能力
+            - 可选语言插件改为 `lang-all`（默认推荐）+ 按语言包安装
+
+            ### 安装主包
             ```bash
-            npm install -g @hsingjui/contextweaver
-            # or
-            pnpm add -g @hsingjui/contextweaver
+            npm install -g @alistar.max/contextweaver
+            # 或
+            pnpm add -g @alistar.max/contextweaver
             ```
+
+            ### 推荐安装（全量可选语言）
+            ```bash
+            npm install -g @alistar.max/contextweaver-lang-all
+            ```
+
+            ### 按需安装（示例）
+            ```bash
+            npm install -g @alistar.max/contextweaver-lang-typescript
+            npm install -g @alistar.max/contextweaver-lang-rust
+            ```
+
+            > 兼容插件 `lang-ts21` / `lang-ts22` 仍可安装，但不再推荐新用户使用。
+            > 未安装插件时会自动回退到纯文本分片，不阻断索引流程。

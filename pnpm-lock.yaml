@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@keqingmoe/tree-sitter':
-        specifier: ^0.26.2
-        version: 0.26.2
       '@lancedb/lancedb':
         specifier: ^0.22.0
         version: 0.22.3(apache-arrow@18.1.0)
@@ -44,48 +41,18 @@ importers:
       pino:
         specifier: ^10.1.0
         version: 10.1.0
-      tree-sitter-c:
-        specifier: ^0.24.1
-        version: 0.24.1
-      tree-sitter-c-sharp:
-        specifier: ^0.23.1
-        version: 0.23.1
-      tree-sitter-cpp:
-        specifier: ^0.23.4
-        version: 0.23.4
-      tree-sitter-dart:
-        specifier: ^1.0.0
-        version: 1.0.0
+      tree-sitter:
+        specifier: ^0.25.0
+        version: 0.25.0
       tree-sitter-go:
         specifier: 0.25.0
-        version: 0.25.0
-      tree-sitter-java:
-        specifier: 0.23.5
-        version: 0.23.5
+        version: 0.25.0(tree-sitter@0.25.0)
       tree-sitter-javascript:
         specifier: 0.25.0
-        version: 0.25.0
-      tree-sitter-kotlin:
-        specifier: ^0.3.8
-        version: 0.3.8
-      tree-sitter-php:
-        specifier: ^0.24.2
-        version: 0.24.2
+        version: 0.25.0(tree-sitter@0.25.0)
       tree-sitter-python:
         specifier: 0.25.0
-        version: 0.25.0
-      tree-sitter-ruby:
-        specifier: ^0.23.1
-        version: 0.23.1
-      tree-sitter-rust:
-        specifier: 0.24.0
-        version: 0.24.0
-      tree-sitter-swift:
-        specifier: ^0.7.1
-        version: 0.7.1
-      tree-sitter-typescript:
-        specifier: 0.23.2
-        version: 0.23.2
+        version: 0.25.0(tree-sitter@0.25.0)
       zod:
         specifier: ^4.2.1
         version: 4.2.1
@@ -111,6 +78,177 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/lang-all:
+    dependencies:
+      '@alistar.max/contextweaver-lang-c':
+        specifier: 0.0.8
+        version: link:../lang-c
+      '@alistar.max/contextweaver-lang-cpp':
+        specifier: 0.0.8
+        version: link:../lang-cpp
+      '@alistar.max/contextweaver-lang-csharp':
+        specifier: 0.0.8
+        version: link:../lang-csharp
+      '@alistar.max/contextweaver-lang-java':
+        specifier: 0.0.8
+        version: link:../lang-java
+      '@alistar.max/contextweaver-lang-kotlin':
+        specifier: 0.0.8
+        version: link:../lang-kotlin
+      '@alistar.max/contextweaver-lang-php':
+        specifier: 0.0.8
+        version: link:../lang-php
+      '@alistar.max/contextweaver-lang-ruby':
+        specifier: 0.0.8
+        version: link:../lang-ruby
+      '@alistar.max/contextweaver-lang-rust':
+        specifier: 0.0.8
+        version: link:../lang-rust
+      '@alistar.max/contextweaver-lang-swift':
+        specifier: 0.0.8
+        version: link:../lang-swift
+      '@alistar.max/contextweaver-lang-typescript':
+        specifier: 0.0.8
+        version: link:../lang-typescript
+
+  packages/lang-c:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.22.4
+        version: 0.22.4
+      tree-sitter-c:
+        specifier: ^0.24.1
+        version: 0.24.1(tree-sitter@0.22.4)
+
+  packages/lang-cpp:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-c:
+        specifier: 0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+      tree-sitter-cpp:
+        specifier: ^0.23.4
+        version: 0.23.4(tree-sitter@0.21.1)
+
+  packages/lang-csharp:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-c-sharp:
+        specifier: ^0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+
+  packages/lang-java:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-java:
+        specifier: 0.23.5
+        version: 0.23.5(tree-sitter@0.21.1)
+
+  packages/lang-kotlin:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-kotlin:
+        specifier: ^0.3.8
+        version: 0.3.8(tree-sitter@0.21.1)
+
+  packages/lang-php:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.22.4
+        version: 0.22.4
+      tree-sitter-php:
+        specifier: ^0.24.2
+        version: 0.24.2(tree-sitter@0.22.4)
+
+  packages/lang-ruby:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-ruby:
+        specifier: ^0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+
+  packages/lang-rust:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.22.4
+        version: 0.22.4
+      tree-sitter-rust:
+        specifier: 0.24.0
+        version: 0.24.0(tree-sitter@0.22.4)
+
+  packages/lang-swift:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.22.4
+        version: 0.22.4
+      tree-sitter-swift:
+        specifier: ^0.7.1
+        version: 0.7.1(tree-sitter@0.22.4)
+
+  packages/lang-ts21:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-c:
+        specifier: 0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+      tree-sitter-c-sharp:
+        specifier: ^0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+      tree-sitter-cpp:
+        specifier: ^0.23.4
+        version: 0.23.4(tree-sitter@0.21.1)
+      tree-sitter-java:
+        specifier: 0.23.5
+        version: 0.23.5(tree-sitter@0.21.1)
+      tree-sitter-kotlin:
+        specifier: ^0.3.8
+        version: 0.3.8(tree-sitter@0.21.1)
+      tree-sitter-ruby:
+        specifier: ^0.23.1
+        version: 0.23.1(tree-sitter@0.21.1)
+      tree-sitter-typescript:
+        specifier: 0.23.2
+        version: 0.23.2(tree-sitter@0.21.1)
+
+  packages/lang-ts22:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.22.4
+        version: 0.22.4
+      tree-sitter-c:
+        specifier: ^0.24.1
+        version: 0.24.1(tree-sitter@0.22.4)
+      tree-sitter-php:
+        specifier: ^0.24.2
+        version: 0.24.2(tree-sitter@0.22.4)
+      tree-sitter-rust:
+        specifier: 0.24.0
+        version: 0.24.0(tree-sitter@0.22.4)
+      tree-sitter-swift:
+        specifier: ^0.7.1
+        version: 0.7.1(tree-sitter@0.22.4)
+
+  packages/lang-typescript:
+    dependencies:
+      tree-sitter:
+        specifier: ^0.21.1
+        version: 0.21.1
+      tree-sitter-typescript:
+        specifier: 0.23.2
+        version: 0.23.2(tree-sitter@0.21.1)
 
 packages:
 
@@ -353,9 +491,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@keqingmoe/tree-sitter@0.26.2':
-    resolution: {integrity: sha512-CPll3FfS9kboys2jq3AmsqP/FbVfTESaFBBN4KQshsMwgFKWg0w/q2I+HFxKRJztVEb/IxaNXT6csDDUU2UzHQ==}
 
   '@lancedb/lancedb-darwin-arm64@0.22.3':
     resolution: {integrity: sha512-oP2Kic51nLqs27Xo+AzSVlcMgmmfZbU/PseQ3KBtU92rczO5DYU2St1Y7qDUWcjw+RF3H2v/DKzYed16h1wCBQ==}
@@ -1177,9 +1312,6 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nan@2.25.0:
-    resolution: {integrity: sha512-0M90Ag7Xn5KMLLZ7zliPWP3rT90P6PN+IzVFS0VqmnPktBk3700xUVv8Ikm9EUaUE5SDWdp/BIxdENzVznpm1g==}
-
   napi-build-utils@2.0.0:
     resolution: {integrity: sha512-GEbrYkbfF7MoNaoh2iGG84Mnf/WZfB0GdGEsM8wz7Expx/LlWf5U8t9nvJKXSp3qr5IsEbK04cBGhol/KwOsWA==}
 
@@ -1514,10 +1646,10 @@ packages:
       tree-sitter:
         optional: true
 
-  tree-sitter-c@0.23.6:
-    resolution: {integrity: sha512-0dxXKznVyUA0s6PjNolJNs2yF87O5aL538A/eR6njA5oqX3C3vH4vnx3QdOKwuUdpKEcFdHuiDpRKLLCA/tjvQ==}
+  tree-sitter-c@0.23.1:
+    resolution: {integrity: sha512-cBNEz/LF0CdIPDqEiAgFnH8CZTZ/CLgaOVzG5m5g1BXD6w2eCAgPva1A2SzkTK5gvnPdEigcQbzpfRwntrbrcQ==}
     peerDependencies:
-      tree-sitter: ^0.22.1
+      tree-sitter: ^0.21.0
     peerDependenciesMeta:
       tree-sitter:
         optional: true
@@ -1542,9 +1674,6 @@ packages:
     peerDependenciesMeta:
       tree-sitter:
         optional: true
-
-  tree-sitter-dart@1.0.0:
-    resolution: {integrity: sha512-Ve5YMPJjjGW9LEsO+MngAOibQsw5obFp+bUT41pvwdcXWRwJImOWs3eaPi6AubEiBmc09qvhdvxeIXvxlhMnug==}
 
   tree-sitter-go@0.25.0:
     resolution: {integrity: sha512-APBc/Dq3xz/e35Xpkhb1blu5UgW+2E3RyGWawZSCNcbGwa7jhSQPS8KsUupuzBla8PCo8+lz9W/JDJjmfRa2tw==}
@@ -1635,6 +1764,15 @@ packages:
     peerDependenciesMeta:
       tree-sitter:
         optional: true
+
+  tree-sitter@0.21.1:
+    resolution: {integrity: sha512-7dxoA6kYvtgWw80265MyqJlkRl4yawIjO7S5MigytjELkX43fV2WsAXzsNfO7sBpPPCF5Gp0+XzHk0DwLCq3xQ==}
+
+  tree-sitter@0.22.4:
+    resolution: {integrity: sha512-usbHZP9/oxNsUY65MQUsduGRqDHQOou1cagUSwjhoSYAmSahjQDAVsh9s+SlZkn8X8+O1FULRGwHu7AFP3kjzg==}
+
+  tree-sitter@0.25.0:
+    resolution: {integrity: sha512-PGZZzFW63eElZJDe/b/R/LbsjDDYJa5UEjLZJB59RQsMX+fo0j54fqBPn1MGKav/QNa0JR0zBiVaikYDWCj5KQ==}
 
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
@@ -1890,11 +2028,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@keqingmoe/tree-sitter@0.26.2':
-    dependencies:
-      node-addon-api: 8.5.0
-      node-gyp-build: 4.8.4
 
   '@lancedb/lancedb-darwin-arm64@0.22.3':
     optional: true
@@ -2645,8 +2778,6 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nan@2.25.0: {}
-
   napi-build-utils@2.0.0: {}
 
   negotiator@1.0.0: {}
@@ -3025,90 +3156,129 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  tree-sitter-c-sharp@0.23.1:
+  tree-sitter-c-sharp@0.23.1(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-c@0.23.6:
+  tree-sitter-c@0.23.1(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-c@0.24.1:
+  tree-sitter-c@0.24.1(tree-sitter@0.22.4):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.22.4
 
   tree-sitter-cli@0.23.2: {}
 
-  tree-sitter-cpp@0.23.4:
+  tree-sitter-cpp@0.23.4(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
-      tree-sitter-c: 0.23.6
+      tree-sitter-c: 0.23.1(tree-sitter@0.21.1)
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-dart@1.0.0:
-    dependencies:
-      nan: 2.25.0
-
-  tree-sitter-go@0.25.0:
+  tree-sitter-go@0.25.0(tree-sitter@0.25.0):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.25.0
 
-  tree-sitter-java@0.23.5:
+  tree-sitter-java@0.23.5(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-javascript@0.23.1:
+  tree-sitter-javascript@0.23.1(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-javascript@0.25.0:
+  tree-sitter-javascript@0.25.0(tree-sitter@0.25.0):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.25.0
 
-  tree-sitter-kotlin@0.3.8:
+  tree-sitter-kotlin@0.3.8(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 7.1.1
       node-gyp-build: 4.8.4
+      tree-sitter: 0.21.1
 
-  tree-sitter-php@0.24.2:
+  tree-sitter-php@0.24.2(tree-sitter@0.22.4):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.22.4
 
-  tree-sitter-python@0.25.0:
+  tree-sitter-python@0.25.0(tree-sitter@0.25.0):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.25.0
 
-  tree-sitter-ruby@0.23.1:
+  tree-sitter-ruby@0.23.1(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.21.1
 
-  tree-sitter-rust@0.24.0:
+  tree-sitter-rust@0.24.0(tree-sitter@0.22.4):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.22.4
 
-  tree-sitter-swift@0.7.1:
+  tree-sitter-swift@0.7.1(tree-sitter@0.22.4):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
+      tree-sitter: 0.22.4
       tree-sitter-cli: 0.23.2
       which: 2.0.2
 
-  tree-sitter-typescript@0.23.2:
+  tree-sitter-typescript@0.23.2(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.5.0
       node-gyp-build: 4.8.4
-      tree-sitter-javascript: 0.23.1
+      tree-sitter-javascript: 0.23.1(tree-sitter@0.21.1)
+    optionalDependencies:
+      tree-sitter: 0.21.1
+
+  tree-sitter@0.21.1:
+    dependencies:
+      node-addon-api: 8.5.0
+      node-gyp-build: 4.8.4
+
+  tree-sitter@0.22.4:
+    dependencies:
+      node-addon-api: 8.5.0
+      node-gyp-build: 4.8.4
+
+  tree-sitter@0.25.0:
+    dependencies:
+      node-addon-api: 8.5.0
+      node-gyp-build: 4.8.4
 
   ts-interface-checker@0.1.13: {}
 

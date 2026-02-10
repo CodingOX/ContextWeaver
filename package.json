@@ -1,6 +1,6 @@
 {
   "name": "@alistar.max/contextweaver",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "A context weaving tool for LLMs",
   "license": "MIT",
   "author": "alistar.max",
@@ -23,20 +23,22 @@
     "dist/**/*.d.ts"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <25"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --out-dir dist --sourcemap --clean",
     "build:release": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
     "dev": "tsup src/index.ts --format esm --dts --out-dir dist --sourcemap --watch",
     "fmt": "biome check --write ./src",
-    "test": "tsx tests/language-support.test.ts",
+    "test": "tsx tests/language-support.test.ts && tsx tests/runtime/registry.test.ts && tsx tests/runtime/docs-guard.test.ts && tsx tests/runtime/workspace-packages.test.ts && tsx tests/runtime/plugin-loader.test.ts",
+    "test:runtime": "tsx tests/runtime/registry.test.ts",
     "test:e2e:mcp": "pnpm build && tsx tests/mcp-e2e-smoke.ts",
     "prepublishOnly": "pnpm test",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "test:install:node24": "node tests/install/node24-smoke.mjs"
   },
   "dependencies": {
-    "@keqingmoe/tree-sitter": "^0.26.2",
+    "tree-sitter": "^0.25.0",
     "@lancedb/lancedb": "^0.22.0",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "better-sqlite3": "^12.2.0",
@@ -48,20 +50,9 @@
     "ignore": "^7.0.5",
     "p-limit": "^7.2.0",
     "pino": "^10.1.0",
-    "tree-sitter-c": "^0.24.1",
-    "tree-sitter-c-sharp": "^0.23.1",
-    "tree-sitter-cpp": "^0.23.4",
-    "tree-sitter-dart": "^1.0.0",
     "tree-sitter-go": "0.25.0",
-    "tree-sitter-java": "0.23.5",
     "tree-sitter-javascript": "0.25.0",
-    "tree-sitter-kotlin": "^0.3.8",
-    "tree-sitter-php": "^0.24.2",
     "tree-sitter-python": "0.25.0",
-    "tree-sitter-ruby": "^0.23.1",
-    "tree-sitter-rust": "0.24.0",
-    "tree-sitter-swift": "^0.7.1",
-    "tree-sitter-typescript": "0.23.2",
     "zod": "^4.2.1"
   },
   "devDependencies": {
@@ -75,23 +66,23 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@keqingmoe/tree-sitter",
+      "tree-sitter",
       "better-sqlite3",
       "esbuild",
+      "tree-sitter-go",
+      "tree-sitter-javascript",
+      "tree-sitter-python",
       "tree-sitter-c",
       "tree-sitter-c-sharp",
       "tree-sitter-cpp",
-      "tree-sitter-go",
       "tree-sitter-java",
-      "tree-sitter-javascript",
       "tree-sitter-kotlin",
       "tree-sitter-php",
-      "tree-sitter-python",
       "tree-sitter-ruby",
       "tree-sitter-rust",
-      "tree-sitter-dart",
       "tree-sitter-swift",
-      "tree-sitter-typescript"
+      "tree-sitter-typescript",
+      "tree-sitter-cli"
     ]
   }
 }

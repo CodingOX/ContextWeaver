@@ -2,12 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import pLimit from 'p-limit';
-import {
-  getParser,
-  isLanguageSupported,
-  type ProcessedChunk,
-  SemanticSplitter,
-} from '../chunking/index.js';
+import { getParser, type ProcessedChunk, SemanticSplitter } from '../chunking/index.js';
 import { readFileWithEncoding } from '../utils/encoding.js';
 import { sha256 } from './hash.js';
 import { getLanguage } from './language.js';
@@ -208,19 +203,17 @@ async function processFile(
     // 语义分片
     let chunks: ProcessedChunk[] = [];
 
-    // 1. 尝试 AST 分片（如果语言支持）
-    if (isLanguageSupported(language)) {
-      try {
-        const parser = await getParser(language);
-        if (parser) {
-          const tree = parser.parse(content);
-          chunks = splitter.split(tree, content, relPath, language);
-        }
-      } catch (err) {
-        const error = err as { message?: string };
-        // AST 分片失败，记录警告
-        console.warn(`[Chunking] AST failed for ${relPath}: ${error.message}`);
+    // 1. 尝试 AST 分片
+    try {
+      const parser = await getParser(language);
+      if (parser) {
+        const tree = parser.parse(content);
+        chunks = splitter.split(tree, content, relPath, language);
       }
+    } catch (err) {
+      const error = err as { message?: string };
+      // AST 分片失败，记录警告
+      console.warn(`[Chunking] AST failed for ${relPath}: ${error.message}`);
     }
 
     // 兜底分片：对 FALLBACK_LANGS 语言，如果 AST 分片失败或返回空，使用行分片

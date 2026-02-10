@@ -1,0 +1,80 @@
+name: Smoke Install
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke-install:
+    name: Node ${{ matrix.node }} · ${{ matrix.pm }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+        pm: ['npm', 'pnpm']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Create tarball
+        id: pack
+        run: |
+          PKG_TGZ="$(npm pack --silent)"
+          echo "tgz=$PKG_TGZ" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke install via npm
+        if: matrix.pm == 'npm'
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          cd "$TMP_DIR"
+          npm init -y >/dev/null
+          npm i "$GITHUB_WORKSPACE/${{ steps.pack.outputs.tgz }}"
+          npx --no-install contextweaver --version
+
+      - name: Smoke install via pnpm
+        if: matrix.pm == 'pnpm'
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          cd "$TMP_DIR"
+          npm init -y >/dev/null
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.pnpm = {
+            onlyBuiltDependencies: [
+              'tree-sitter',
+              'better-sqlite3',
+              'tree-sitter-go',
+              'tree-sitter-javascript',
+              'tree-sitter-python',
+            ],
+          };
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+          pnpm add "$GITHUB_WORKSPACE/${{ steps.pack.outputs.tgz }}"
+          pnpm exec contextweaver --version
+
+      - name: Node24 local runtime smoke
+        if: matrix.node == '24'
+        run: node tests/install/node24-smoke.mjs

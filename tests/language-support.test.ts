@@ -26,8 +26,8 @@ test('语言映射包含 c_sharp 扩展名', () => {
   assert.equal(getLanguage('Foo.csx'), 'c_sharp');
 });
 
-test('新增语言已进入 AST 支持列表', () => {
-  for (const lang of ['php', 'ruby', 'swift', 'dart']) {
+test('内置语言已进入 AST 支持列表', () => {
+  for (const lang of ['javascript', 'python', 'go']) {
     assert.equal(isLanguageSupported(lang), true, `语言 ${lang} 未注册到 ParserPool`);
   }
 });

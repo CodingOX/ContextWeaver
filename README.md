@@ -24,7 +24,7 @@
 - **RRF 融合 (Reciprocal Rank Fusion)**：智能融合多路召回结果
 
 ### 🧠 AST 语义分片
-- **Tree-sitter 解析**：支持 TypeScript、JavaScript、Python、Go、Java、Rust、Kotlin、PHP、Ruby、Swift、Dart、C#
+- **Tree-sitter 解析**：主包内置 JavaScript、Python、Go；其余语言通过可选插件扩展
 - **Dual-Text 策略**：`displayCode` 用于展示，`vectorText` 用于 Embedding
 - **Gap-Aware 合并**：智能处理代码间隙，保持语义完整性
 - **Breadcrumb 注入**：向量文本包含层级路径，提升检索召回率
@@ -48,7 +48,7 @@
 
 ### 环境要求
 
-- Node.js >= 20
+- Node.js >= 20 且 < 25（推荐 Node.js 22/24 LTS）
 - pnpm (推荐) 或 npm
 
 ### 安装
@@ -61,6 +61,71 @@ npm install -g @alistar.max/contextweaver
 pnpm add -g @alistar.max/contextweaver
 ```
 
+### 可选语言插件
+
+默认安装仅内置 JavaScript、Python、Go 的 AST 分片能力。
+如果你需要 TypeScript、Kotlin、C#、C++、Java、Ruby、C、PHP、Rust、Swift，请安装可选插件。
+
+#### 推荐安装（默认 all）
+
+`@alistar.max/contextweaver-lang-all` 会一次性安装全部可选语言插件。
+
+`npm` 全局安装：
+
+```bash
+npm install -g @alistar.max/contextweaver
+npm install -g @alistar.max/contextweaver-lang-all
+```
+
+`pnpm` 全局安装：
+
+```bash
+pnpm add -g @alistar.max/contextweaver
+pnpm add -g @alistar.max/contextweaver-lang-all
+```
+
+项目内本地安装（非全局）：
+
+```bash
+pnpm add -D @alistar.max/contextweaver
+pnpm add -D @alistar.max/contextweaver-lang-all
+
+# 使用本地命令
+npx contextweaver --version
+```
+
+#### 按需安装（单语言插件）
+
+如果你只需要部分语言，可以按语言安装：
+
+- TypeScript：`@alistar.max/contextweaver-lang-typescript`
+- Kotlin：`@alistar.max/contextweaver-lang-kotlin`
+- C#：`@alistar.max/contextweaver-lang-csharp`
+- C++：`@alistar.max/contextweaver-lang-cpp`
+- Java：`@alistar.max/contextweaver-lang-java`
+- Ruby：`@alistar.max/contextweaver-lang-ruby`
+- C：`@alistar.max/contextweaver-lang-c`
+- PHP：`@alistar.max/contextweaver-lang-php`
+- Rust：`@alistar.max/contextweaver-lang-rust`
+- Swift：`@alistar.max/contextweaver-lang-swift`
+
+示例：
+
+```bash
+npm install -g @alistar.max/contextweaver-lang-typescript
+npm install -g @alistar.max/contextweaver-lang-rust
+```
+
+#### 兼容插件（不推荐新安装）
+
+以下两包保留用于兼容历史安装，不建议新用户继续使用：
+
+- `@alistar.max/contextweaver-lang-ts21`（历史分组）
+- `@alistar.max/contextweaver-lang-ts22`（历史分组）
+
+> 未安装插件时，对应语言会自动回退为纯文本分片，不阻断索引流程。
+
+
 ### pnpm 全局安装（原生依赖批准）
 
 如果你使用的是 `pnpm v10+` 全局安装，首次运行前建议执行：
@@ -69,8 +134,7 @@ pnpm add -g @alistar.max/contextweaver
 pnpm approve-builds -g
 ```
 
-然后在交互界面里批准 `better-sqlite3`、`@keqingmoe/tree-sitter` 和
-`tree-sitter-*`。否则可能出现以下错误：
+然后在交互界面里批准 `better-sqlite3`、`tree-sitter` 以及你安装的可选插件对应的 `tree-sitter-*` 原生依赖。否则可能出现以下错误：
 
 - `Could not locate the bindings file`
 - `better_sqlite3.node` 缺失
@@ -78,8 +142,81 @@ pnpm approve-builds -g
 如果已经安装过但仍报错，可执行：
 
 ```bash
-pnpm rebuild -g better-sqlite3 @keqingmoe/tree-sitter tree-sitter-*
+# 主包默认内置语言依赖
+pnpm rebuild -g better-sqlite3 tree-sitter tree-sitter-go tree-sitter-javascript tree-sitter-python
 ```
+
+如果你安装了 `lang-all`，再补充：
+
+```bash
+pnpm rebuild -g tree-sitter-c tree-sitter-c-sharp tree-sitter-cpp tree-sitter-java tree-sitter-kotlin tree-sitter-php tree-sitter-ruby tree-sitter-rust tree-sitter-swift tree-sitter-typescript
+```
+
+如果你按语言安装，则仅重建对应依赖，例如：
+
+```bash
+# TypeScript 单语言插件
+pnpm rebuild -g tree-sitter-typescript
+
+# Rust 单语言插件
+pnpm rebuild -g tree-sitter-rust
+```
+
+### 安装常见问题（FAQ）
+
+#### Q1：Node 24 能安装吗？
+
+可以。当前版本支持 `Node.js >= 20 且 < 25`，包含 Node 24。
+建议优先使用 Node 22/24 LTS。
+
+#### Q2：为什么 `pnpm` 安装后提示原生模块缺失？
+
+这通常是因为 `pnpm v10+` 默认会拦截部分依赖的构建脚本。
+先执行：
+
+```bash
+pnpm approve-builds -g
+```
+
+然后批准 `better-sqlite3`、`tree-sitter` 以及你安装插件对应的 `tree-sitter-*`。
+
+#### Q3：安装后报 `Could not locate the bindings file` 怎么办？
+
+可先重建主包内置依赖：
+
+```bash
+pnpm rebuild -g better-sqlite3 tree-sitter tree-sitter-go tree-sitter-javascript tree-sitter-python
+```
+
+如果安装了 `lang-all` 或单语言插件，再补充重建对应 `tree-sitter-*` 依赖。
+
+#### Q4：不装插件会影响使用吗？
+
+不会阻断索引和搜索。未安装插件时，对应语言会自动回退到纯文本分片。
+只是 AST 结构化分片能力会降低，检索精度可能不如安装插件后。
+
+#### Q5：作为 MCP 使用时，需要手动执行索引吗？新增文件会自动索引吗？
+
+通常不需要手动执行 `contextweaver index`。
+`codebase-retrieval` 在每次调用时都会先执行“自动索引检查”：
+
+- 首次使用（项目未初始化）会自动执行一次完整索引。
+- 后续调用会自动执行增量索引（新增/修改/删除文件会被检测并更新）。
+
+所以新增文件一般会在“下一次 MCP 查询”时自动进入索引。
+如果你希望在查询前主动完成更新，可手动执行：
+
+```bash
+contextweaver index
+```
+
+若出现索引异常或 Embedding 维度变化，可执行：
+
+```bash
+contextweaver index --force
+```
+
+> 注意：需先正确配置 Embedding/Reranker 环境变量，否则 MCP 会先提示配置，暂不执行索引。
 
 ### 初始化配置
 
@@ -149,6 +286,34 @@ pnpm test
 # MCP 多语言端到端冒烟测试
 pnpm test:e2e:mcp
 ```
+
+### 插件整体发布（维护者）
+
+如果你要一次性发布全部插件包（不含主包），可直接使用脚本：
+
+```bash
+# 先做发布前校验
+pnpm install --frozen-lockfile
+pnpm test
+pnpm -r build
+
+# 演练（不真正发布）
+bash scripts/publish-plugins.sh --version 0.0.8 --dry-run
+
+# 正式发布（会自动跳过 npm 上已存在的版本）
+bash scripts/publish-plugins.sh --version 0.0.8
+```
+
+可选参数：
+
+- `--tag <tag>`：指定 npm dist-tag（默认 `latest`）
+- `--provenance`：强制附带 provenance（需支持 OIDC 的 CI）
+- `--no-provenance`：禁用 provenance
+- 不传 `--version`：按各插件目录下 `package.json` 的 version 发布
+
+> provenance 默认是 auto：本地环境自动关闭，CI（含 OIDC）自动开启。
+> 发布顺序与 CI 一致：单语言包 → `lang-all` → 兼容包（`lang-ts21`/`lang-ts22`）。
+> 本地手动发版完整手册见：`docs/release/local-manual-release.md`
 
 ## 🔧 MCP 集成配置
 
@@ -242,61 +407,38 @@ contextweaver/
 ├── src/
 │   ├── index.ts              # CLI 入口
 │   ├── config.ts             # 配置管理（环境变量）
-│   ├── api/                  # 外部 API 封装
-│   │   ├── embedding.ts      # Embedding API
-│   │   └── reranker.ts       # Reranker API
 │   ├── chunking/             # 语义分片
-│   │   ├── SemanticSplitter.ts   # AST 语义分片器
-│   │   ├── SourceAdapter.ts      # 源码适配器
-│   │   ├── LanguageSpec.ts       # 语言规范定义
-│   │   └── ParserPool.ts         # Tree-sitter 解析器池
-│   ├── scanner/              # 文件扫描
-│   │   ├── crawler.ts        # 文件系统遍历
-│   │   ├── processor.ts      # 文件处理
-│   │   ├── filter.ts         # 过滤规则
-│   │   ├── language.ts       # 扩展名语言映射
-│   │   ├── hash.ts           # 文件哈希工具
-│   │   └── index.ts          # Scanner 聚合导出
-│   ├── indexer/              # 索引器
-│   │   └── index.ts          # 批量索引逻辑
-│   ├── vectorStore/          # 向量存储
-│   │   └── index.ts          # LanceDB 适配层
-│   ├── db/                   # 数据库
-│   │   └── index.ts          # SQLite + FTS5
-│   ├── search/               # 搜索服务
-│   │   ├── SearchService.ts  # 核心搜索服务
-│   │   ├── GraphExpander.ts  # 上下文扩展器
-│   │   ├── ContextPacker.ts  # 上下文打包器
-│   │   ├── fts.ts            # 全文搜索
-│   │   ├── config.ts         # 搜索配置
-│   │   ├── types.ts          # 类型定义
-│   │   └── resolvers/        # 多语言 Import 解析器
-│   │       ├── JsTsResolver.ts
-│   │       ├── PythonResolver.ts
-│   │       ├── GoResolver.ts
-│   │       ├── JavaResolver.ts
-│   │       ├── RustResolver.ts
-│   │       ├── KotlinResolver.ts
-│   │       ├── PhpResolver.ts
-│   │       ├── RubyResolver.ts
-│   │       ├── SwiftResolver.ts
-│   │       ├── DartResolver.ts
-│   │       ├── CSharpResolver.ts
-│   │       ├── CppResolver.ts
-│   │       ├── types.ts
-│   │       └── index.ts
+│   │   ├── SemanticSplitter.ts
+│   │   ├── ParserPool.ts
+│   │   └── runtime/
+│   │       ├── LanguageRuntime.ts
+│   │       ├── RuntimeRegistry.ts
+│   │       ├── BuiltinRuntimeTs25.ts
+│   │       └── PluginLoader.ts
+│   ├── scanner/              # 文件扫描与处理
+│   ├── search/               # 搜索核心与 import resolvers
+│   ├── indexer/              # 批量索引逻辑
+│   ├── vectorStore/          # LanceDB 适配层
+│   ├── db/                   # SQLite + FTS5
 │   ├── mcp/                  # MCP 服务端
-│   │   ├── server.ts         # MCP 服务器实现
-│   │   └── tools/
-│   │       ├── codebaseRetrieval.ts  # 代码检索工具
-│   │       └── index.ts      # MCP 工具导出
-│   └── utils/                # 工具函数
-│       ├── logger.ts         # 日志系统
-│       ├── encoding.ts       # 编码识别与转换
-│       └── lock.ts           # 文件锁
-├── tests/                    # 回归测试
+│   └── utils/                # 日志/编码/锁等工具
+├── packages/
+│   ├── lang-all/             # 推荐：一键安装全部可选语言
+│   ├── lang-typescript/      # 单语言插件示例（其余语言同模式）
+│   ├── lang-rust/            # 单语言插件示例
+│   ├── lang-ts21/            # 兼容插件（不推荐新安装）
+│   └── lang-ts22/            # 兼容插件（不推荐新安装）
+├── tests/
 │   ├── language-support.test.ts
+│   ├── runtime/
+│   │   ├── registry.test.ts
+│   │   ├── plugin-loader.test.ts
+│   │   ├── workspace-packages.test.ts
+│   │   └── docs-guard.test.ts
+│   ├── install/
+│   │   └── node24-smoke.mjs
 │   └── mcp-e2e-smoke.ts
+├── pnpm-workspace.yaml
 ├── package.json
 └── tsconfig.json
 ```
@@ -356,27 +498,31 @@ interface SearchConfig {
 
 ## 🌍 多语言支持
 
-ContextWeaver 通过 Tree-sitter 原生支持以下编程语言的 AST 解析：
+ContextWeaver 当前采用“主包内置 + 可选插件”两层能力模型：
 
-| 语言 | AST 解析 | Import 解析 | 文件扩展名 |
-|------|----------|-------------|-----------|
-| TypeScript | ✅ | ✅ | `.ts`, `.tsx` |
-| JavaScript | ✅ | ✅ | `.js`, `.jsx`, `.mjs` |
-| Python | ✅ | ✅ | `.py` |
-| Go | ✅ | ✅ | `.go` |
-| Java | ✅ | ✅ | `.java` |
-| Rust | ✅ | ✅ | `.rs` |
-| Kotlin | ✅ | ✅ | `.kt` |
-| PHP | ✅ | ✅ | `.php` |
-| Ruby | ✅ | ✅ | `.rb` |
-| Swift | ✅ | ✅ | `.swift` |
-| Dart | ✅ | ✅ | `.dart` |
-| C# | ✅ | ✅ | `.cs`, `.csx` |
+- 主包内置 AST：JavaScript、Python、Go
+- 插件扩展 AST：TypeScript、Kotlin、C#、C++、Java、Ruby、C、PHP、Rust、Swift
+- 未安装插件时：相关语言自动回退为纯文本分片（可索引，可搜索）
+
+| 语言 | 主包默认 AST | 安装插件后 AST | Import 解析 | 文件扩展名 |
+|------|--------------|----------------|-------------|-----------|
+| JavaScript | ✅ | ✅ | ✅ | `.js`, `.jsx`, `.mjs` |
+| Python | ✅ | ✅ | ✅ | `.py` |
+| Go | ✅ | ✅ | ✅ | `.go` |
+| TypeScript | ❌ | ✅（`lang-all` 或 `lang-typescript`） | ✅ | `.ts`, `.tsx` |
+| Kotlin | ❌ | ✅（`lang-all` 或 `lang-kotlin`） | ✅ | `.kt` |
+| C# | ❌ | ✅（`lang-all` 或 `lang-csharp`） | ✅ | `.cs`, `.csx` |
+| C++ | ❌ | ✅（`lang-all` 或 `lang-cpp`） | ✅ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | ❌ | ✅（`lang-all` 或 `lang-java`） | ✅ | `.java` |
+| Ruby | ❌ | ✅（`lang-all` 或 `lang-ruby`） | ✅ | `.rb` |
+| C | ❌ | ✅（`lang-all` 或 `lang-c`） | ✅ | `.c`, `.h` |
+| PHP | ❌ | ✅（`lang-all` 或 `lang-php`） | ✅ | `.php` |
+| Rust | ❌ | ✅（`lang-all` 或 `lang-rust`） | ✅ | `.rs` |
+| Swift | ❌ | ✅（`lang-all` 或 `lang-swift`） | ✅ | `.swift` |
+| Dart | ❌ | ❌（当前无插件） | ✅ | `.dart` |
 
 C# Import 解析支持 `using`、`using static`、`global using`、别名导入，
 并兼容 `global::` 与 `@` 标识符写法。
-
-其他语言会采用基于行的 Fallback 分片策略，仍可正常索引和搜索。
 
 ## 🔄 工作流程
 
