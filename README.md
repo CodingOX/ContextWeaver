@@ -204,10 +204,21 @@ pnpm rebuild -g better-sqlite3 tree-sitter tree-sitter-go tree-sitter-javascript
 - 后续调用会自动执行增量索引（新增/修改/删除文件会被检测并更新）。
 
 所以新增文件一般会在“下一次 MCP 查询”时自动进入索引。
-如果你希望在查询前主动完成更新，可手动执行：
+
+**但对于首个项目（第一次接入）强烈建议先手动执行一次索引**，避免把速率限制误判为“客户端卡住”：
 
 ```bash
-contextweaver index
+contextweaver index . --force
+```
+
+这样你可以在终端直接观察 Embedding 进度与限流日志，并据此调整 `EMBEDDINGS_MAX_CONCURRENCY`。例如：
+
+```text
+2026-02-10 16:49:36 [INFO] Embedding 进度 {"progress":"492/773","percent":"64%","tokens":2215924,"elapsed":"8.5s","eta":"5s"}
+2026-02-10 16:49:37 [WARN] 速率限制：触发 429，暂停所有请求 {"backoffMs":5000,"previousConcurrency":10,"newConcurrency":1,"activeRequests":6}
+2026-02-10 16:49:42 [INFO] 速率限制：恢复请求 {"waitMs":10000}
+2026-02-10 16:49:42 [INFO] Embedding 进度 {"progress":"538/773","percent":"70%","tokens":2419842,"elapsed":"14.5s","eta":"6s"}
+2026-02-10 16:49:43 [WARN] 速率限制：触发 429，暂停所有请求 {"backoffMs":10000,"previousConcurrency":3,"newConcurrency":1,"activeRequests":2}
 ```
 
 若出现索引异常或 Embedding 维度变化，可执行：
@@ -270,6 +281,48 @@ cw search --information-request "用户认证流程是如何实现的？"
 cw search --information-request "数据库连接逻辑" --technical-terms "DatabasePool,Connection"
 ```
 
+### 安装后 CLI 验证（不依赖 MCP 客户端）
+
+如果你想验证“npm 包已安装 + 检索功能可用”，可以直接用当前仓库做一轮命令行自检：
+
+```bash
+# 1) 准备测试仓库
+# 如果你当前就在本仓库目录，可跳过 clone
+cd /tmp
+git clone https://github.com/CodingOX/ContextWeaver.git
+cd ContextWeaver
+
+# 2) 确认 CLI 可执行
+contextweaver --version
+
+# 3) 初始化并配置 API Key（只需一次）
+contextweaver init
+# 编辑 ~/.contextweaver/.env，填 EMBEDDINGS_* 和 RERANK_*
+
+# 4) 执行索引（首个项目/第一次使用建议手动执行 --force）
+contextweaver index . --force
+
+# 5) 执行检索验证
+contextweaver search \
+  --information-request "插件默认加载顺序在哪里定义" \
+  --technical-terms "DEFAULT_PLUGIN_CANDIDATES,PluginLoader" \
+  | tee /tmp/contextweaver-smoke.txt
+
+# 6) 结果断言（命中即通过）
+rg "PluginLoader\.ts|DEFAULT_PLUGIN_CANDIDATES" /tmp/contextweaver-smoke.txt
+```
+
+预期结果：
+
+- `contextweaver --version` 能正常输出版本号
+- 搜索结果中能命中 `PluginLoader.ts` 或 `DEFAULT_PLUGIN_CANDIDATES`
+
+如果未命中，请优先检查：
+
+- `~/.contextweaver/.env` 的 Embedding/Reranker 配置是否完整
+- 网络是否可访问对应的 Embedding/Reranker API
+- 是否已在目标仓库目录执行索引命令
+
 ### 启动 MCP 服务器
 
 ```bash
@@ -330,6 +383,21 @@ bash scripts/publish-plugins.sh --version 0.0.8
     }
   }
 }
+```
+
+### Codex CLI 配置
+
+将以下内容添加到 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.contextweaver]
+# 可选
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+# 必备
+type = "stdio"
+command = "contextweaver"
+args = ["mcp"]
 ```
 
 ### MCP 工具说明
