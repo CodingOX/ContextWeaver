@@ -93,6 +93,16 @@ class ProgressTracker {
     }
   }
 
+  /**
+   * 扩展总批次数（用于 413 拆分重试时修正进度）
+   */
+  expandTotal(extraBatches: number): void {
+    if (extraBatches <= 0) {
+      return;
+    }
+    this.total += extraBatches;
+  }
+
   /** 输出进度 */
   private logProgress(): void {
     if (this.skipLogs) return;
@@ -391,6 +401,7 @@ export class EmbeddingClient {
         const errorMessage = error.message || '';
         const isRateLimited = errorMessage.includes('429') || errorMessage.includes('rate');
         const isNetworkError = this.isNetworkError(err);
+        const isPayloadTooLarge = this.isPayloadTooLarge(err);
 
         if (isRateLimited) {
           // 429 错误：释放槽位，触发全局暂停
@@ -416,6 +427,34 @@ export class EmbeddingClient {
           this.rateLimiter.releaseForRetry();
           await sleep(delayMs);
           // 循环继续，重新获取槽位并重试
+        } else if (isPayloadTooLarge && texts.length > 1) {
+          // 413 错误：释放槽位后拆分批次并递归处理
+          this.rateLimiter.releaseForRetry();
+
+          const splitIndex = Math.ceil(texts.length / 2);
+          const leftTexts = texts.slice(0, splitIndex);
+          const rightTexts = texts.slice(splitIndex);
+
+          // 一个批次拆分为两个批次，总数 +1
+          progress.expandTotal(1);
+
+          logger.warn(
+            {
+              error: errorMessage,
+              batchSize: texts.length,
+              leftBatchSize: leftTexts.length,
+              rightBatchSize: rightTexts.length,
+            },
+            'Embedding 请求体过大，自动拆分批次重试',
+          );
+
+          const leftResults = await this.processWithRateLimit(leftTexts, startIndex, progress);
+          const rightResults = await this.processWithRateLimit(
+            rightTexts,
+            startIndex + leftTexts.length,
+            progress,
+          );
+          return [...leftResults, ...rightResults];
         } else {
           // 其他错误或重试次数耗尽：抛出异常
           this.rateLimiter.releaseFailure();
@@ -472,6 +511,34 @@ export class EmbeddingClient {
     }
 
     return false;
+  }
+
+  /**
+   * 判断是否为请求体过大错误（HTTP 413）
+   */
+  private isPayloadTooLarge(err: unknown): boolean {
+    const error = err as { message?: string; code?: string };
+    const message = (error.message || '').toLowerCase();
+    const code = (error.code || '').toString().toLowerCase();
+
+    if (message.includes('413')) {
+      return true;
+    }
+
+    const payloadTooLargePatterns = [
+      'payload too large',
+      'request entity too large',
+      'content too large',
+      'entity too large',
+    ];
+
+    for (const pattern of payloadTooLargePatterns) {
+      if (message.includes(pattern)) {
+        return true;
+      }
+    }
+
+    return code === '413';
   }
 
   /**
