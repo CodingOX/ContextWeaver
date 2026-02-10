@@ -116,3 +116,64 @@ test('非 413 错误应保持原有行为直接抛出', async () => {
   }
 });
 
+test('每次 HTTP 请求都应按 key 池轮询 Authorization', async () => {
+  const client = new EmbeddingClient({
+    ...TEST_CONFIG,
+    apiKey: 'legacy-key',
+    apiKeys: ['rr-key-1', 'rr-key-2'],
+    maxConcurrency: 1,
+  });
+  const originalFetch = globalThis.fetch;
+  const usedAuthHeaders: string[] = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    usedAuthHeaders.push(headers.get('Authorization') || '');
+    return makeSuccessResponse(1);
+  }) as typeof fetch;
+
+  try {
+    await client.embedBatch(['t1', 't2', 't3'], 1);
+
+    assert.deepEqual(usedAuthHeaders, [
+      'Bearer rr-key-1',
+      'Bearer rr-key-2',
+      'Bearer rr-key-1',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('网络重试时应切换到下一个 key', async () => {
+  const client = new EmbeddingClient({
+    ...TEST_CONFIG,
+    apiKey: 'legacy-key',
+    apiKeys: ['retry-key-1', 'retry-key-2'],
+    maxConcurrency: 1,
+  });
+  const originalFetch = globalThis.fetch;
+  const usedAuthHeaders: string[] = [];
+  let callCount = 0;
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    usedAuthHeaders.push(headers.get('Authorization') || '');
+    callCount++;
+
+    if (callCount === 1) {
+      throw new Error('fetch failed');
+    }
+
+    return makeSuccessResponse(1);
+  }) as typeof fetch;
+
+  try {
+    const results = await client.embedBatch(['retry-text'], 1);
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(usedAuthHeaders, ['Bearer retry-key-1', 'Bearer retry-key-2']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

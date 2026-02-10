@@ -322,10 +322,39 @@ function getRateLimitController(maxConcurrency: number): RateLimitController {
 export class EmbeddingClient {
   private config: EmbeddingConfig;
   private rateLimiter: RateLimitController;
+  private readonly apiKeyPool: string[];
+  private nextApiKeyIndex = 0;
 
   constructor(config?: EmbeddingConfig) {
     this.config = config || getEmbeddingConfig();
     this.rateLimiter = getRateLimitController(this.config.maxConcurrency);
+    this.apiKeyPool = this.buildApiKeyPool();
+  }
+
+  /**
+   * 构建 API Key 池：优先使用 apiKeys，缺失时回退到 apiKey
+   */
+  private buildApiKeyPool(): string[] {
+    const configuredKeys = Array.isArray(this.config.apiKeys)
+      ? this.config.apiKeys
+          .map((key) => key?.trim())
+          .filter((key): key is string => Boolean(key))
+      : [];
+
+    if (configuredKeys.length > 0) {
+      return configuredKeys;
+    }
+
+    return [this.config.apiKey];
+  }
+
+  /**
+   * 获取下一个用于请求的 API Key（轮询）
+   */
+  private getNextApiKey(): string {
+    const key = this.apiKeyPool[this.nextApiKeyIndex];
+    this.nextApiKeyIndex = (this.nextApiKeyIndex + 1) % this.apiKeyPool.length;
+    return key;
   }
 
   /**
@@ -549,6 +578,8 @@ export class EmbeddingClient {
     startIndex: number,
     progress: ProgressTracker,
   ): Promise<EmbeddingResult[]> {
+    const apiKey = this.getNextApiKey();
+
     const requestBody: EmbeddingRequest = {
       model: this.config.model,
       input: texts,
@@ -559,7 +590,7 @@ export class EmbeddingClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
     });
