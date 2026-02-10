@@ -62,6 +62,8 @@ npm install -g @alistar.max/contextweaver
 npm install -g @alistar.max/contextweaver-lang-all
 ```
 
+> 如需更多语言支持，可通过**可选语言插件**按需安装。
+
 ### 二、使用
 
 #### 1) 初始化配置
@@ -77,6 +79,8 @@ cw init
 
 ```bash
 # Embedding API 配置（必需）
+# 多 key（可选，逗号分隔）。与 EMBEDDINGS_API_KEY 兼容；同时配置时优先使用本项。
+# EMBEDDINGS_API_KEYS=key-1,key-2
 EMBEDDINGS_API_KEY=your-api-key-here
 EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
 EMBEDDINGS_MODEL=BAAI/bge-m3
@@ -84,6 +88,8 @@ EMBEDDINGS_MAX_CONCURRENCY=10
 EMBEDDINGS_DIMENSIONS=1024
 
 # Reranker 配置（必需）
+# 多 key（可选，逗号分隔）。与 RERANK_API_KEY 兼容；同时配置时优先使用本项。
+# RERANK_API_KEYS=key-1,key-2
 RERANK_API_KEY=your-api-key-here
 RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
 RERANK_MODEL=BAAI/bge-reranker-v2-m3
@@ -92,6 +98,13 @@ RERANK_TOP_N=20
 # 忽略模式（可选，逗号分隔,让AI生成不同语言项目的通用忽略文件）
 # IGNORE_PATTERNS=.venv,node_modules
 ```
+
+
+说明：
+
+- `EMBEDDINGS_API_KEYS` / `RERANK_API_KEYS` 支持逗号分隔多 key。
+- 与 `EMBEDDINGS_API_KEY` / `RERANK_API_KEY` 完全兼容。
+- 若同时配置，多 key 变量优先，单 key 变量会作为兜底补充。
 
 #### 2) MCP 集成配置
 
@@ -208,6 +221,8 @@ rg "PluginLoader\.ts|DEFAULT_PLUGIN_CANDIDATES" /tmp/contextweaver-smoke.txt
 - PHP：`npm install -g @alistar.max/contextweaver-lang-php`
 - Rust：`npm install -g @alistar.max/contextweaver-lang-rust`
 - Swift：`npm install -g @alistar.max/contextweaver-lang-swift`
+- TypeScript 5.8 兼容包（不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts21`
+- TypeScript 5.9 兼容包（不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts22`
 
 ##### Q2：Node 24 能安装吗？
 
@@ -409,12 +424,14 @@ contextweaver/
 
 | 变量名 | 必需 | 默认值 | 描述 |
 |--------|------|--------|------|
-| `EMBEDDINGS_API_KEY` | ✅ | - | Embedding API 密钥 |
+| `EMBEDDINGS_API_KEYS` | ✅（与 `EMBEDDINGS_API_KEY` 二选一） | - | 多 Embedding API Key（逗号分隔）；与单 key 兼容，同时配置时优先使用本项 |
+| `EMBEDDINGS_API_KEY` | ✅（与 `EMBEDDINGS_API_KEYS` 二选一） | - | 单 Embedding API Key（兼容写法）；同时配置时作为兜底补充 |
 | `EMBEDDINGS_BASE_URL` | ✅ | - | Embedding API 地址 |
 | `EMBEDDINGS_MODEL` | ✅ | - | Embedding 模型名称 |
 | `EMBEDDINGS_MAX_CONCURRENCY` | ❌ | 10 | Embedding 并发数 |
 | `EMBEDDINGS_DIMENSIONS` | ❌ | 1024 | 向量维度 |
-| `RERANK_API_KEY` | ✅ | - | Reranker API 密钥 |
+| `RERANK_API_KEYS` | ✅（与 `RERANK_API_KEY` 二选一） | - | 多 Reranker API Key（逗号分隔）；与单 key 兼容，同时配置时优先使用本项 |
+| `RERANK_API_KEY` | ✅（与 `RERANK_API_KEYS` 二选一） | - | 单 Reranker API Key（兼容写法）；同时配置时作为兜底补充 |
 | `RERANK_BASE_URL` | ✅ | - | Reranker API 地址 |
 | `RERANK_MODEL` | ✅ | - | Reranker 模型名称 |
 | `RERANK_TOP_N` | ❌ | 20 | Rerank 返回数量 |
