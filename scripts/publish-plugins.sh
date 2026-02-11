@@ -18,6 +18,7 @@ usage() {
   --dry-run           使用 npm publish --dry-run（仅演练）
   --provenance        强制附带 --provenance（需要支持 OIDC 的 CI 环境）
   --no-provenance     禁用 --provenance
+  --allow-version-mismatch  允许插件版本与 --version 不一致（不报错，自动跳过不匹配包）
   -h, --help          显示帮助
 
 说明：
@@ -31,6 +32,7 @@ TARGET_VERSION=""
 DIST_TAG="latest"
 DRY_RUN="false"
 PROVENANCE_MODE="auto"
+ALLOW_VERSION_MISMATCH="false"
 
 is_oidc_supported() {
   [[ "${GITHUB_ACTIONS:-}" == "true" ]] &&
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-provenance)
       PROVENANCE_MODE="false"
+      shift
+      ;;
+    --allow-version-mismatch)
+      ALLOW_VERSION_MISMATCH="true"
       shift
       ;;
     -h|--help)
@@ -123,6 +129,7 @@ echo "- dist-tag: $DIST_TAG"
 echo "- dry-run: $DRY_RUN"
 echo "- provenance(mode): $PROVENANCE_MODE"
 echo "- provenance(enabled): $USE_PROVENANCE"
+echo "- allow-version-mismatch: $ALLOW_VERSION_MISMATCH"
 if [[ -n "$TARGET_VERSION" ]]; then
   echo "- 目标版本: $TARGET_VERSION"
 fi
@@ -151,8 +158,14 @@ for package_dir in "${PLUGIN_DIRS[@]}"; do
   package_version="$(node -p "require('$package_json').version")"
 
   if [[ -n "$TARGET_VERSION" && "$package_version" != "$TARGET_VERSION" ]]; then
+    if [[ "$ALLOW_VERSION_MISMATCH" == "true" ]]; then
+      echo "⏭️  版本不一致，按 --allow-version-mismatch 跳过：$package_name 当前为 ${package_version}，目标为 ${TARGET_VERSION}"
+      skipped+=1
+      continue
+    fi
+
     echo "❌ 版本不一致：$package_name 当前为 ${package_version}，期望为 ${TARGET_VERSION}" >&2
-    echo "   请先统一版本后再发布。" >&2
+    echo "   请先统一版本后再发布，或使用 --allow-version-mismatch 跳过不匹配包。" >&2
     exit 1
   fi
 

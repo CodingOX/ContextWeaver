@@ -2,6 +2,8 @@
 
 > 适用场景：在本地机器手动发布 `@alistar.max/contextweaver` 及语言插件包。
 
+> 若本次只发布主包（不发布插件），请直接参考：`docs/release/main-package-only-release.md`。
+
 ## 1. 发布前准备
 
 ### 1.1 环境要求
