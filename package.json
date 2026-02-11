@@ -30,7 +30,7 @@
     "build:release": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
     "dev": "tsup src/index.ts --format esm --dts --out-dir dist --sourcemap --watch",
     "fmt": "biome check --write ./src",
-    "test": "tsx tests/language-support.test.ts && tsx tests/runtime/registry.test.ts && tsx tests/runtime/docs-guard.test.ts && tsx tests/runtime/workspace-packages.test.ts && tsx tests/runtime/plugin-loader.test.ts && tsx tests/runtime/config-multi-key.test.ts && tsx tests/runtime/embedding-client.test.ts && tsx tests/runtime/reranker-client.test.ts && tsx tests/runtime/multi-key-docs.test.ts",
+    "test": "tsx tests/language-support.test.ts && tsx tests/runtime/registry.test.ts && tsx tests/runtime/docs-guard.test.ts && tsx tests/runtime/workspace-packages.test.ts && tsx tests/runtime/plugin-loader.test.ts && tsx tests/runtime/config-multi-key.test.ts && tsx tests/runtime/embedding-client.test.ts && tsx tests/runtime/reranker-client.test.ts && tsx tests/runtime/multi-key-docs.test.ts && tsx tests/runtime/search-rerank-fallback.test.ts && tsx tests/runtime/chunk-fts-content.test.ts && tsx tests/runtime/query-channel-build.test.ts && tsx tests/runtime/search-query-routing.test.ts && tsx tests/runtime/per-file-cap.test.ts",
     "test:runtime": "tsx tests/runtime/registry.test.ts",
     "test:e2e:mcp": "pnpm build && tsx tests/mcp-e2e-smoke.ts",
     "prepublishOnly": "pnpm test",

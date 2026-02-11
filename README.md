@@ -453,6 +453,7 @@ interface SearchConfig {
   wVec: number;              // 向量权重（默认 1.0）
   wLex: number;              // 词法权重（默认 0.5）
   fusedTopM: number;         // 融合后送 rerank 数量（默认 40）
+  preRerankPerFileCap: number; // rerank 前单文件候选上限（默认 5）
 
   // === Rerank ===
   rerankTopN: number;        // Rerank 后保留数量（默认 10）
@@ -519,7 +520,7 @@ C# Import 解析支持 `using`、`using static`、`global using`、别名导入�
 1. Query Parse     → 解析查询，分离语义和术语
 2. Hybrid Recall   → 向量 + 词法双路召回
 3. RRF Fusion      → Reciprocal Rank Fusion 融合
-4. Rerank          → 交叉编码器精排
+4. Rerank          → 交叉编码器精排（失败自动降级到 RRF 结果）
 5. Smart Cutoff    → 智能分数截断
 6. Graph Expand    → 邻居/面包屑/导入扩展
 7. Context Pack    → 段落合并，Token 预算

@@ -40,6 +40,32 @@ interface FileToIndex {
   chunks: ProcessedChunk[];
 }
 
+export interface ChunkFtsDocInput {
+  chunkId: string;
+  filePath: string;
+  chunkIndex: number;
+  breadcrumb: string;
+  displayCode: string;
+}
+
+export interface ChunkFtsDoc {
+  chunkId: string;
+  filePath: string;
+  chunkIndex: number;
+  breadcrumb: string;
+  content: string;
+}
+
+export function buildChunkFtsDoc(input: ChunkFtsDocInput): ChunkFtsDoc {
+  return {
+    chunkId: input.chunkId,
+    filePath: input.filePath,
+    chunkIndex: input.chunkIndex,
+    breadcrumb: input.breadcrumb,
+    content: input.displayCode,
+  };
+}
+
 // ===========================================
 // Indexer 类
 // ===========================================
@@ -204,13 +230,7 @@ export class Indexer {
 
     // ===== 阶段 3: 组装所有 ChunkRecords =====
     const filesToUpsert: Array<{ path: string; hash: string; records: ChunkRecord[] }> = [];
-    const allFtsChunks: Array<{
-      chunkId: string;
-      filePath: string;
-      chunkIndex: number;
-      breadcrumb: string;
-      content: string;
-    }> = [];
+    const allFtsChunks: ChunkFtsDoc[] = [];
     const successFiles: Array<{ path: string; hash: string }> = [];
     const errorFiles: string[] = [];
 
@@ -249,13 +269,15 @@ export class Indexer {
           records.push(record);
 
           // 收集 FTS 数据
-          allFtsChunks.push({
-            chunkId: record.chunk_id,
-            filePath: record.file_path,
-            chunkIndex: record.chunk_index,
-            breadcrumb: record.breadcrumb,
-            content: `${record.breadcrumb}\n${record.display_code}`,
-          });
+          allFtsChunks.push(
+            buildChunkFtsDoc({
+              chunkId: record.chunk_id,
+              filePath: record.file_path,
+              chunkIndex: record.chunk_index,
+              breadcrumb: record.breadcrumb,
+              displayCode: record.display_code,
+            }),
+          );
         }
 
         filesToUpsert.push({ path: file.path, hash: file.hash, records });

@@ -26,7 +26,35 @@ import {
   segmentQuery,
 } from './fts.js';
 import { getGraphExpander } from './GraphExpander.js';
-import type { ContextPack, ScoredChunk, SearchConfig } from './types.js';
+import type { ContextPack, QueryChannels, ScoredChunk, SearchConfig } from './types.js';
+
+/**
+ * 在融合后、Rerank 前按文件施加候选上限
+ *
+ * 输入应保持降序；函数会按原顺序稳定筛选，确保高分 chunk 优先保留。
+ */
+export function applyPreRerankPerFileCap(
+  candidates: ScoredChunk[],
+  perFileCap: number,
+): ScoredChunk[] {
+  if (perFileCap <= 0 || !Number.isFinite(perFileCap)) {
+    return candidates;
+  }
+
+  const fileCounts = new Map<string, number>();
+  const capped: ScoredChunk[] = [];
+
+  for (const candidate of candidates) {
+    const current = fileCounts.get(candidate.filePath) ?? 0;
+    if (current >= perFileCap) {
+      continue;
+    }
+    fileCounts.set(candidate.filePath, current + 1);
+    capped.push(candidate);
+  }
+
+  return capped;
+}
 
 // ===========================================
 // 性能优化：Token 边界 RegExp 缓存
@@ -74,20 +102,36 @@ export class SearchService {
   /**
    * 构建上下文包（用于问答/生成）
    */
-  async buildContextPack(query: string): Promise<ContextPack> {
+  async buildContextPack(query: string, channels?: Partial<QueryChannels>): Promise<ContextPack> {
     const timingMs: Record<string, number> = {};
     let t0 = Date.now();
 
+    const vectorQuery = channels?.vectorQuery ?? query;
+    const lexicalQuery = channels?.lexicalQuery ?? query;
+    const rerankQuery = channels?.rerankQuery ?? query;
+
     // 1. 混合召回
-    const candidates = await this.hybridRetrieve(query);
+    const candidates = await this.hybridRetrieve(vectorQuery, lexicalQuery);
     timingMs.retrieve = Date.now() - t0;
 
     // 2. 取 topM
     t0 = Date.now();
     const topM = candidates.sort((a, b) => b.score - a.score).slice(0, this.config.fusedTopM);
+    const cappedTopM = applyPreRerankPerFileCap(topM, this.config.preRerankPerFileCap);
 
-    // 3. Rerank → seeds
-    const reranked = await this.rerank(query, topM);
+    // 3. Rerank → seeds（失败时降级到融合结果）
+    let reranked: ScoredChunk[];
+    try {
+      reranked = await this.rerank(rerankQuery, cappedTopM);
+    } catch (error) {
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Rerank 不可用，降级到 RRF 融合结果',
+      );
+      reranked = cappedTopM;
+    }
     timingMs.rerank = Date.now() - t0;
 
     // 4. Smart TopK Cutoff
@@ -125,11 +169,11 @@ export class SearchService {
   /**
    * 混合召回：向量 + 词法
    */
-  private async hybridRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async hybridRetrieve(vectorQuery: string, lexicalQuery: string): Promise<ScoredChunk[]> {
     // 并行执行向量和词法召回
     const [vectorResults, lexicalResults] = await Promise.all([
-      this.vectorRetrieve(query),
-      this.lexicalRetrieve(query),
+      this.vectorRetrieve(vectorQuery),
+      this.lexicalRetrieve(lexicalQuery),
     ]);
 
     logger.debug(

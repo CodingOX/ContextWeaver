@@ -15,6 +15,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { generateProjectId } from '../../db/index.js';
 // 注意：SearchService 和 scan 改为延迟导入，避免在 MCP 启动时就加载 native 模块
+import { buildQueryChannels } from '../../search/queryChannels.js';
 import type { ContextPack, SearchConfig, Segment } from '../../search/types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -224,15 +225,16 @@ export async function handleCodebaseRetrieval(
   // 2. 确保代码库已索引（自动初始化 + 增量更新）
   await ensureIndexed(repo_path, projectId, onProgress);
 
-  // 3. 合并查询
-  // - information_request 驱动语义向量搜索
-  // - technical_terms 增强词法（FTS）匹配
-  const query = [information_request, ...(technical_terms || [])].filter(Boolean).join(' ');
+  // 3. 查询分通道
+  const channels = buildQueryChannels({
+    informationRequest: information_request,
+    technicalTerms: technical_terms,
+  });
 
   logger.info(
     {
       projectId: projectId.slice(0, 10),
-      query,
+      queryChannels: channels,
       zenConfig: configOverride,
     },
     'MCP 查询构建',
@@ -247,7 +249,7 @@ export async function handleCodebaseRetrieval(
   logger.debug('SearchService 初始化完成');
 
   // 6. 执行搜索
-  const contextPack = await service.buildContextPack(query);
+  const contextPack = await service.buildContextPack(channels.rerankQuery, channels);
 
   // 详细日志：seeds 信息
   if (contextPack.seeds.length > 0) {
