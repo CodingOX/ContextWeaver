@@ -281,7 +281,10 @@ contextweaver index --force
 #### 3) 项目回归测试（开发者）
 
 ```bash
-# 语言支持与解析器回归
+# 全量单元测试入口（runtime + benchmark）
+npm run test:unit:all
+
+# 语言支持与运行时回归（不含 benchmark）
 npm test
 
 # 离线 benchmark 基线（Recall@K / MRR / nDCG）
