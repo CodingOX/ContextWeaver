@@ -5,31 +5,30 @@ import pLimit from 'p-limit';
 import { getParser, type ProcessedChunk, SemanticSplitter } from '../chunking/index.js';
 import { readFileWithEncoding } from '../utils/encoding.js';
 import { sha256 } from './hash.js';
-import { getLanguage } from './language.js';
+import { getAllowedLanguages, getLanguage, isAllowedExtension } from './language.js';
 
 /**
- * 大文件阈值（字节）
+ * 已知扩展名启用降级行分片的阈值（字节）
  */
-const MAX_FILE_SIZE = 100 * 1024; // 500KB
+const LARGE_FILE_DEGRADE_THRESHOLD = 100 * 1024;
+
+/**
+ * 已知扩展名最大可处理文件大小（字节）
+ */
+const KNOWN_EXTENSION_MAX_FILE_SIZE = 500 * 1024;
+
+/**
+ * 未知扩展名最大可处理文件大小（字节）
+ *
+ * 未知扩展名只有显式 include 时才会进入扫描，为避免噪声和性能风险，限制更严格。
+ */
+const UNKNOWN_EXTENSION_MAX_FILE_SIZE = 100 * 1024;
 
 /**
  * 需要兜底分片支持的目标语言集合
- * 这些语言的文件即使 AST 解析失败也会使用行分片保证可检索
+ * 与扩展名白名单保持一致，避免出现“可扫描但不可分片”的语言缺口。
  */
-const FALLBACK_LANGS = new Set([
-  'python',
-  'go',
-  'rust',
-  'java',
-  'kotlin',
-  'php',
-  'ruby',
-  'swift',
-  'dart',
-  'c_sharp',
-  'markdown',
-  'json',
-]);
+const FALLBACK_LANGS = new Set([...getAllowedLanguages(), 'unknown']);
 
 /**
  * 检查 JSON 文件是否应该跳过索引
@@ -115,9 +114,16 @@ async function processFile(
     const stat = await fs.stat(absPath);
     const mtime = stat.mtimeMs;
     const size = stat.size;
+    const isKnownExtension = isAllowedExtension(relPath);
+    const maxFileSize = isKnownExtension
+      ? KNOWN_EXTENSION_MAX_FILE_SIZE
+      : UNKNOWN_EXTENSION_MAX_FILE_SIZE;
+    const shouldUseLargeFileFallback =
+      isKnownExtension &&
+      size > LARGE_FILE_DEGRADE_THRESHOLD &&
+      size <= KNOWN_EXTENSION_MAX_FILE_SIZE;
 
-    // 检查大文件
-    if (size > MAX_FILE_SIZE) {
+    if (size > maxFileSize) {
       return {
         absPath,
         relPath,
@@ -128,7 +134,7 @@ async function processFile(
         mtime,
         size,
         status: 'skipped',
-        error: `File too large (${size} bytes > ${MAX_FILE_SIZE} bytes)`,
+        error: `File too large (${size} bytes > ${maxFileSize} bytes)`,
       };
     }
 
@@ -203,17 +209,21 @@ async function processFile(
     // 语义分片
     let chunks: ProcessedChunk[] = [];
 
-    // 1. 尝试 AST 分片
-    try {
-      const parser = await getParser(language);
-      if (parser) {
-        const tree = parser.parse(content);
-        chunks = splitter.split(tree, content, relPath, language);
+    if (shouldUseLargeFileFallback) {
+      chunks = splitter.splitPlainText(content, relPath, language);
+    } else {
+      // 1. 尝试 AST 分片
+      try {
+        const parser = await getParser(language);
+        if (parser) {
+          const tree = parser.parse(content);
+          chunks = splitter.split(tree, content, relPath, language);
+        }
+      } catch (err) {
+        const error = err as { message?: string };
+        // AST 分片失败，记录警告
+        console.warn(`[Chunking] AST failed for ${relPath}: ${error.message}`);
       }
-    } catch (err) {
-      const error = err as { message?: string };
-      // AST 分片失败，记录警告
-      console.warn(`[Chunking] AST failed for ${relPath}: ${error.message}`);
     }
 
     // 兜底分片：对 FALLBACK_LANGS 语言，如果 AST 分片失败或返回空，使用行分片

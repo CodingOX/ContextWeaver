@@ -395,21 +395,50 @@ const DEFAULT_EXCLUDE_PATTERNS = [
 ];
 
 /**
+ * 默认包含模式
+ *
+ * 默认值为空，避免把未知扩展名文件全部纳入索引。
+ */
+const DEFAULT_INCLUDE_PATTERNS: string[] = [];
+
+/**
+ * 解析逗号分隔模式字符串
+ * @param raw 原始模式字符串
+ * @returns 解析后的模式数组
+ */
+function parseCommaSeparatedPatterns(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(',')
+    .map((pattern) => pattern.trim())
+    .filter(Boolean);
+}
+
+/**
  * 获取合并后的排除模式列表
  * @returns 排除模式数组
  */
 export function getExcludePatterns(): string[] {
-  const envPatterns = process.env.IGNORE_PATTERNS;
+  const envPatterns = parseCommaSeparatedPatterns(process.env.IGNORE_PATTERNS);
   const patterns = [...DEFAULT_EXCLUDE_PATTERNS];
 
-  if (envPatterns) {
-    // 解析逗号分隔的环境变量
-    const additional = envPatterns
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    patterns.push(...additional);
-  }
+  patterns.push(...envPatterns);
+
+  return patterns;
+}
+
+/**
+ * 获取合并后的显式包含模式列表
+ * @returns 包含模式数组
+ */
+export function getIncludePatterns(): string[] {
+  const envPatterns = parseCommaSeparatedPatterns(process.env.INCLUDE_PATTERNS);
+  const patterns = [...DEFAULT_INCLUDE_PATTERNS];
+
+  patterns.push(...envPatterns);
 
   return patterns;
 }

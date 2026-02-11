@@ -54,6 +54,11 @@ const LANGUAGE_MAP: Record<string, string> = {
 const ALLOWED_EXTENSIONS = new Set(Object.keys(LANGUAGE_MAP));
 
 /**
+ * 白名单扩展名对应的语言集合
+ */
+const ALLOWED_LANGUAGES = new Set(Object.values(LANGUAGE_MAP));
+
+/**
  * 根据文件路径获取语言标识
  * @param filePath 文件路径
  * @returns 语言标识，如果不在白名单中则返回 unknown
@@ -71,6 +76,14 @@ export function getLanguage(filePath: string): string {
 export function isAllowedExtension(filePath: string): boolean {
   const ext = getFileExtension(filePath);
   return ALLOWED_EXTENSIONS.has(ext);
+}
+
+/**
+ * 获取白名单扩展名对应的语言列表
+ * @returns 语言标识数组
+ */
+export function getAllowedLanguages(): string[] {
+  return [...ALLOWED_LANGUAGES];
 }
 
 /**

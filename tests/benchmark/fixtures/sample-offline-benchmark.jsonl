@@ -1,0 +1,2 @@
+{"id":"q1","query":"locate search service","retrieved":["doc-a","doc-b","doc-c","doc-d"],"relevant":{"doc-b":2,"doc-d":1}}
+{"id":"q2","query":"find graph expander","retrieved":["doc-x","doc-y","doc-z"],"relevant":{"doc-y":1}}

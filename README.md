@@ -97,6 +97,16 @@ RERANK_TOP_N=20
 
 # 忽略模式（可选，逗号分隔,让AI生成不同语言项目的通用忽略文件）
 # IGNORE_PATTERNS=.venv,node_modules
+
+# 显式包含模式（可选，逗号分隔；仅用于放行未知扩展名）
+# INCLUDE_PATTERNS=**/*.prompt,**/*.cue
+```
+
+如果你希望在项目内持久化 include 规则，可在项目根目录创建 `.contextweaverinclude`，每行一个 glob 规则，例如：
+
+```bash
+**/*.prompt
+**/*.cue
 ```
 
 
@@ -274,8 +284,19 @@ contextweaver index --force
 # 语言支持与解析器回归
 npm test
 
+# 离线 benchmark 基线（Recall@K / MRR / nDCG）
+npm run test:benchmark
+npm run benchmark:offline
+
 # MCP 多语言端到端冒烟测试
 npm run test:e2e:mcp
+```
+
+离线评测默认样例数据位于 `tests/benchmark/fixtures/sample-offline-benchmark.jsonl`。
+
+```bash
+# 自定义数据集与 K 列表
+node --loader tsx src/search/eval/runOfflineBenchmark.ts path/to/dataset.jsonl --k 1,3,5,10
 ```
 
 ### 四、发布（维护者）
@@ -435,6 +456,7 @@ contextweaver/
 | `RERANK_BASE_URL` | ✅ | - | Reranker API 地址 |
 | `RERANK_MODEL` | ✅ | - | Reranker 模型名称 |
 | `RERANK_TOP_N` | ❌ | 20 | Rerank 返回数量 |
+| `INCLUDE_PATTERNS` | ❌ | - | 额外包含模式（用于显式纳入未知扩展名） |
 | `IGNORE_PATTERNS` | ❌ | - | 额外忽略模式 |
 
 ### 搜索配置参数
