@@ -9,6 +9,7 @@ import {
   initChunksFts,
   initFilesFts,
 } from '../search/fts.js';
+import { ensureFeedbackTables } from '../search/feedbackLoop.js';
 
 const BASE_DIR = path.join(os.homedir(), '.contextweaver');
 
@@ -122,6 +123,9 @@ export function initDb(projectId: string): Database.Database {
   // 初始化 FTS 表（词法搜索支持）
   initFilesFts(db);
   initChunksFts(db);
+
+  // 初始化检索反馈闭环表（P4）
+  ensureFeedbackTables(db);
 
   return db;
 }

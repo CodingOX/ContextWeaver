@@ -13,8 +13,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { generateProjectId } from '../../db/index.js';
+import { generateProjectId, initDb } from '../../db/index.js';
 // 注意：SearchService 和 scan 改为延迟导入，避免在 MCP 启动时就加载 native 模块
+import { recordRetrievalEvent } from '../../search/feedbackLoop.js';
 import { buildQueryChannels } from '../../search/queryChannels.js';
 import type { ContextPack, SearchConfig, Segment } from '../../search/types.js';
 import { logger } from '../../utils/logger.js';
@@ -300,7 +301,45 @@ export async function handleCodebaseRetrieval(
     'MCP codebase-retrieval 完成',
   );
 
-  // 7. 格式化输出
+
+  // 7. 写入隐式反馈事件（P4）
+  try {
+    const db = initDb(projectId);
+    try {
+      const feedback = recordRetrievalEvent(db, {
+        query: information_request,
+        technicalTerms: technical_terms,
+        seeds: contextPack.seeds.map((seed) => ({
+          chunkId: seed.record.chunk_id,
+          filePath: seed.filePath,
+          chunkIndex: seed.chunkIndex,
+          score: seed.score,
+          source: seed.source,
+        })),
+      });
+
+      if (feedback.inferredSignals.length > 0) {
+        logger.info(
+          {
+            eventId: feedback.eventId,
+            inferredSignals: feedback.inferredSignals.map((signal) => ({
+              type: signal.type,
+              weight: signal.weight,
+              file: signal.targetFilePath,
+            })),
+          },
+          'MCP 隐式反馈信号已记录',
+        );
+      }
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    const error = err as { message?: string };
+    logger.warn({ error: error.message }, '写入隐式反馈失败（不影响主流程）');
+  }
+
+  // 8. 格式化输出
   return formatMcpResponse(contextPack);
 }
 

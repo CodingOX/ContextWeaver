@@ -300,7 +300,31 @@ node --loader tsx src/search/eval/runOfflineBenchmark.ts path/to/dataset.jsonl -
 ```
 
 
-#### 4) 索引一致性审计（P3）
+#### 4) 离线自动调参（P4）
+
+```bash
+# 运行自动调参单元测试
+npm run test:benchmark
+
+# 使用样例数据集执行调参
+npm run benchmark:tune
+
+# 通过 CLI 调参（支持自定义 target/k/grid）
+contextweaver tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl --target mrr --k 1,3,5 --top 5
+```
+
+调参数据集最小字段：`id/query/vectorRetrieved/lexicalRetrieved/relevant`。
+
+#### 5) 隐式反馈闭环摘要（P4）
+
+```bash
+# 查看最近 7 天隐式反馈摘要
+contextweaver feedback . --days 7 --top 10
+```
+
+输出包含：`totalEvents`、`zeroHitRate`、`implicitSuccessRate` 及高复用文件 TopN。
+
+#### 6) 索引一致性审计（P3）
 
 ```bash
 # 检查向量索引与 chunks_fts 一致性

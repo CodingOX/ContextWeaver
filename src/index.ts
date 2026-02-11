@@ -198,6 +198,123 @@ cli
     },
   );
 
+
+cli
+  .command('tune <dataset>', '离线自动调参（RRF 回放）')
+  .option('--target <metric>', '优化目标（mrr / recall@k / ndcg@k）', { default: 'mrr' })
+  .option('--k <values>', '指标 K 列表（逗号分隔）', { default: '1,3,5' })
+  .option('--top <n>', '输出前 N 组候选', { default: '5' })
+  .option('--grid <json>', '参数网格 JSON（可选）')
+  .action(
+    async (
+      dataset: string,
+      options: {
+        target?: string;
+        k?: string;
+        top?: string;
+        grid?: string;
+      },
+    ) => {
+      try {
+        const { loadAutoTuneDataset } = await import('./search/eval/autoTuneDataset.js');
+        const { runAutoTune } = await import('./search/eval/autoTune.js');
+
+        const kValues = (options.k || '1,3,5')
+          .split(',')
+          .map((token) => Number(token.trim()))
+          .filter((value) => Number.isFinite(value) && value > 0)
+          .map((value) => Math.floor(value));
+
+        if (kValues.length === 0) {
+          throw new Error('--k 参数无效，应为正整数列表（如 1,3,5）');
+        }
+
+        let parsedGrid: unknown;
+        if (options.grid) {
+          parsedGrid = JSON.parse(options.grid);
+        }
+
+        const cases = await loadAutoTuneDataset(dataset);
+        const result = runAutoTune(cases, {
+          target: options.target || 'mrr',
+          kValues,
+          topN: Number(options.top || '5'),
+          grid:
+            parsedGrid && typeof parsedGrid === 'object' && !Array.isArray(parsedGrid)
+              ? (parsedGrid as { wVec?: number[]; rrfK0?: number[]; fusedTopM?: number[] })
+              : undefined,
+        });
+
+        logger.info(`自动调参完成: candidates=${result.totalCandidates}, target=${result.target}`);
+        logger.info(
+          `最佳参数: wVec=${result.best.config.wVec}, wLex=${result.best.config.wLex}, rrfK0=${result.best.config.rrfK0}, fusedTopM=${result.best.config.fusedTopM}, score=${result.best.targetScore.toFixed(6)}`,
+        );
+
+        process.stdout.write('=== Auto Tune Leaderboard ===\n');
+        result.leaderboard.forEach((item, index) => {
+          process.stdout.write(
+            `${index + 1}. score=${item.targetScore.toFixed(6)} | wVec=${item.config.wVec}, wLex=${item.config.wLex}, rrfK0=${item.config.rrfK0}, fusedTopM=${item.config.fusedTopM}\n`,
+          );
+        });
+      } catch (err) {
+        const error = err as { message?: string; stack?: string };
+        logger.error({ err, stack: error.stack }, `自动调参失败: ${error.message}`);
+        process.exit(1);
+      }
+    },
+  );
+
+
+cli
+  .command('feedback [path]', '查看检索隐式反馈闭环摘要')
+  .option('--days <n>', '统计最近 N 天（默认 7）', { default: '7' })
+  .option('--top <n>', '展示前 N 个高复用文件（默认 10）', { default: '10' })
+  .action(async (targetPath: string | undefined, options: { days?: string; top?: string }) => {
+    const rootPath = targetPath ? path.resolve(targetPath) : process.cwd();
+    const projectId = generateProjectId(rootPath);
+
+    const days = Math.max(1, Math.floor(Number(options.days || '7')));
+    const top = Math.max(1, Math.floor(Number(options.top || '10')));
+
+    try {
+      const { initDb } = await import('./db/index.js');
+      const { getFeedbackSummary } = await import('./search/feedbackLoop.js');
+
+      const db = initDb(projectId);
+      try {
+        const summary = getFeedbackSummary(db, { days, top });
+
+        logger.info(
+          `反馈摘要: events=${summary.totalEvents}, zeroHitRate=${summary.zeroHitRate.toFixed(4)}, implicitSuccessRate=${summary.implicitSuccessRate.toFixed(4)}, positiveSignals=${summary.positiveSignals}, negativeSignals=${summary.negativeSignals}`,
+        );
+
+        process.stdout.write('=== Retrieval Feedback Summary ===\n');
+        process.stdout.write(`projectId: ${projectId}\n`);
+        process.stdout.write(`days: ${days}\n`);
+        process.stdout.write(`totalEvents: ${summary.totalEvents}\n`);
+        process.stdout.write(`zeroHitRate: ${summary.zeroHitRate.toFixed(6)}\n`);
+        process.stdout.write(`implicitSuccessRate: ${summary.implicitSuccessRate.toFixed(6)}\n`);
+        process.stdout.write(`positiveSignals: ${summary.positiveSignals}\n`);
+        process.stdout.write(`negativeSignals: ${summary.negativeSignals}\n`);
+
+        if (summary.topFiles.length > 0) {
+          process.stdout.write('--- topFiles ---\n');
+          summary.topFiles.forEach((item, index) => {
+            process.stdout.write(
+              `${index + 1}. ${item.filePath} | hits=${item.hitCount} | weight=${item.totalWeight.toFixed(4)}\n`,
+            );
+          });
+        }
+      } finally {
+        db.close();
+      }
+    } catch (err) {
+      const error = err as { message?: string; stack?: string };
+      logger.error({ err, stack: error.stack }, `反馈摘要查询失败: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 cli
   .command('doctor [path]', '检查向量索引与 chunks_fts 一致性')
   .option('--repair', '删除 chunks_fts 中无对应向量的孤儿记录')
