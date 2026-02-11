@@ -9,6 +9,10 @@ import { fileURLToPath } from 'node:url';
 import cac from 'cac';
 import { generateProjectId } from './db/index.js';
 import { type ScanStats, scan } from './scanner/index.js';
+import {
+  inspectChunkIndexConsistency,
+  repairChunkIndexConsistency,
+} from './search/chunkIndexConsistency.js';
 import { logger } from './utils/logger.js';
 
 // 读取 package.json 获取版本号
@@ -193,6 +197,44 @@ cli
       process.stdout.write(`${text}\n`);
     },
   );
+
+cli
+  .command('doctor [path]', '检查向量索引与 chunks_fts 一致性')
+  .option('--repair', '删除 chunks_fts 中无对应向量的孤儿记录')
+  .action(async (targetPath: string | undefined, options: { repair?: boolean }) => {
+    const rootPath = targetPath ? path.resolve(targetPath) : process.cwd();
+    const projectId = generateProjectId(rootPath);
+
+    logger.info(`开始一致性检查: ${rootPath}`);
+    logger.info(`项目 ID: ${projectId}`);
+
+    try {
+      const report = await inspectChunkIndexConsistency(projectId);
+
+      logger.info(
+        `一致性报告: vector=${report.vectorCount}, chunks_fts=${report.ftsCount}, missingInFts=${report.missingInFts.length}, missingInVector=${report.missingInVector.length}`,
+      );
+
+      if (report.missingInFts.length > 0) {
+        logger.warn(
+          `检测到 ${report.missingInFts.length} 条向量记录未进入 chunks_fts（建议执行 contextweaver index --force 或增量索引）`,
+        );
+      }
+
+      if (report.missingInVector.length > 0) {
+        logger.warn(`检测到 ${report.missingInVector.length} 条 chunks_fts 孤儿记录`);
+      }
+
+      if (options.repair) {
+        const fix = await repairChunkIndexConsistency(projectId);
+        logger.info(`修复完成: 已删除 ${fix.removedFromFts} 条 chunks_fts 孤儿记录`);
+      }
+    } catch (err) {
+      const error = err as { message?: string; stack?: string };
+      logger.error({ err, stack: error.stack }, `一致性检查失败: ${error.message}`);
+      process.exit(1);
+    }
+  });
 
 cli.help();
 cli.parse();

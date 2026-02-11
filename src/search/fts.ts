@@ -115,6 +115,93 @@ export interface ChunkFtsResult {
   score: number;
 }
 
+/** Chunk FTS 入库文档（分字段模型） */
+export interface ChunkFtsDoc {
+  chunkId: string;
+  filePath: string;
+  chunkIndex: number;
+  symbolTokens: string;
+  breadcrumb: string;
+  body: string;
+  comments: string;
+}
+
+// BM25 字段权重（按 chunks_fts 前四个可索引列顺序）
+const CHUNKS_FTS_BM25_WEIGHTS = {
+  symbolTokens: 6.0,
+  breadcrumb: 3.0,
+  body: 1.5,
+  comments: 0.3,
+} as const;
+
+const REQUIRED_CHUNKS_FTS_COLUMNS = [
+  'symbol_tokens',
+  'breadcrumb',
+  'body',
+  'comments',
+  'chunk_id',
+  'file_path',
+  'chunk_index',
+] as const;
+
+function createChunksFtsTable(db: Database.Database, tokenizer: FtsTokenizer): void {
+  db.exec(`
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(
+            symbol_tokens,
+            breadcrumb,
+            body,
+            comments,
+            chunk_id UNINDEXED,
+            file_path UNINDEXED,
+            chunk_index UNINDEXED,
+            tokenize='${tokenizer}'
+        );
+    `);
+}
+
+function getChunksFtsColumns(db: Database.Database): string[] {
+  const rows = db.prepare('PRAGMA table_info(chunks_fts)').all() as Array<{ name: string }>;
+  return rows.map((row) => row.name);
+}
+
+function isChunksFtsSchemaUpToDate(columns: string[]): boolean {
+  const columnSet = new Set(columns);
+  return REQUIRED_CHUNKS_FTS_COLUMNS.every((column) => columnSet.has(column));
+}
+
+function migrateChunksFtsSchema(db: Database.Database, tokenizer: FtsTokenizer): void {
+  logger.info('检测到旧版 chunks_fts schema，开始迁移到分字段模型');
+
+  db.exec('DROP TABLE IF EXISTS chunks_fts_legacy;');
+  db.exec('ALTER TABLE chunks_fts RENAME TO chunks_fts_legacy;');
+
+  createChunksFtsTable(db, tokenizer);
+
+  db.exec(`
+        INSERT INTO chunks_fts(
+            symbol_tokens,
+            breadcrumb,
+            body,
+            comments,
+            chunk_id,
+            file_path,
+            chunk_index
+        )
+        SELECT
+            '',
+            breadcrumb,
+            content,
+            '',
+            chunk_id,
+            file_path,
+            chunk_index
+        FROM chunks_fts_legacy;
+    `);
+
+  db.exec('DROP TABLE IF EXISTS chunks_fts_legacy;');
+  logger.info('chunks_fts schema 迁移完成');
+}
+
 /**
  * 初始化 chunks_fts 表
  */
@@ -129,19 +216,14 @@ export function initChunksFts(db: Database.Database): void {
     .get();
 
   if (!tableExists) {
-    // 创建 chunk 级 FTS 表
-    // chunk_id, file_path, chunk_index 为 UNINDEXED（不参与全文搜索，但可返回）
-    db.exec(`
-            CREATE VIRTUAL TABLE chunks_fts USING fts5(
-                chunk_id UNINDEXED,
-                file_path UNINDEXED,
-                chunk_index UNINDEXED,
-                breadcrumb,
-                content,
-                tokenize='${tokenizer}'
-            );
-        `);
+    createChunksFtsTable(db, tokenizer);
     logger.info(`创建 chunks_fts 表，tokenizer=${tokenizer}`);
+    return;
+  }
+
+  const columns = getChunksFtsColumns(db);
+  if (!isChunksFtsSchemaUpToDate(columns)) {
+    migrateChunksFtsSchema(db, tokenizer);
   }
 }
 
@@ -163,27 +245,60 @@ export function isChunksFtsInitialized(db: Database.Database): boolean {
  */
 export function batchUpsertChunkFts(
   db: Database.Database,
-  chunks: Array<{
-    chunkId: string;
-    filePath: string;
-    chunkIndex: number;
-    breadcrumb: string;
-    content: string;
-  }>,
+  chunks: ChunkFtsDoc[],
 ): void {
   const deleteStmt = db.prepare('DELETE FROM chunks_fts WHERE chunk_id = ?');
   const insertStmt = db.prepare(
-    'INSERT INTO chunks_fts(chunk_id, file_path, chunk_index, breadcrumb, content) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO chunks_fts(
+      symbol_tokens,
+      breadcrumb,
+      body,
+      comments,
+      chunk_id,
+      file_path,
+      chunk_index
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const transaction = db.transaction((items: typeof chunks) => {
     for (const item of items) {
       deleteStmt.run(item.chunkId);
-      insertStmt.run(item.chunkId, item.filePath, item.chunkIndex, item.breadcrumb, item.content);
+      insertStmt.run(
+        item.symbolTokens,
+        item.breadcrumb,
+        item.body,
+        item.comments,
+        item.chunkId,
+        item.filePath,
+        item.chunkIndex,
+      );
     }
   });
 
   transaction(chunks);
+}
+
+/**
+ * 批量删除指定 chunk_id 的 chunk FTS 索引
+ */
+export function batchDeleteChunkFtsByIds(db: Database.Database, chunkIds: string[]): void {
+  if (chunkIds.length === 0) return;
+
+  const stmt = db.prepare('DELETE FROM chunks_fts WHERE chunk_id = ?');
+  const transaction = db.transaction((ids: string[]) => {
+    for (const id of ids) {
+      stmt.run(id);
+    }
+  });
+  transaction(chunkIds);
+}
+
+/**
+ * 获取 chunks_fts 中全部 chunk_id（用于一致性审计）
+ */
+export function getAllChunkFtsIds(db: Database.Database): string[] {
+  const rows = db.prepare('SELECT chunk_id FROM chunks_fts').all() as Array<{ chunk_id: string }>;
+  return rows.map((row) => row.chunk_id);
 }
 
 /**
@@ -233,13 +348,21 @@ export function searchChunksFts(
     try {
       const rows = db
         .prepare(`
-                SELECT chunk_id, file_path, chunk_index, bm25(chunks_fts) as score
+                SELECT chunk_id, file_path, chunk_index,
+                       bm25(chunks_fts, ?, ?, ?, ?) as score
                 FROM chunks_fts
                 WHERE chunks_fts MATCH ?
                 ORDER BY score
                 LIMIT ?
             `)
-        .all(qStr, queryLimit) as Array<{
+        .all(
+          CHUNKS_FTS_BM25_WEIGHTS.symbolTokens,
+          CHUNKS_FTS_BM25_WEIGHTS.breadcrumb,
+          CHUNKS_FTS_BM25_WEIGHTS.body,
+          CHUNKS_FTS_BM25_WEIGHTS.comments,
+          qStr,
+          queryLimit,
+        ) as Array<{
         chunk_id: string;
         file_path: string;
         chunk_index: number;

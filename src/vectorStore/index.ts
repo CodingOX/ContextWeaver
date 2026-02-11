@@ -317,6 +317,18 @@ export class VectorStore {
   }
 
   /**
+   * 获取全部 chunk_id（用于一致性审计）
+   */
+  async getAllChunkIds(): Promise<string[]> {
+    if (!this.table) return [];
+
+    const rows = await this.table.query().select(['chunk_id']).toArray();
+    return (rows as Array<{ chunk_id?: string }>)
+      .map((row) => row.chunk_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  }
+
+  /**
    * 清空所有数据
    */
   async clear(): Promise<void> {

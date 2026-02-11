@@ -44,8 +44,8 @@
 
 ## P3（精细化）
 
-- [ ] FTS 分字段建模与 BM25 权重策略（`symbol_tokens/breadcrumb/body/comments`）
-- [ ] 索引一致性审计与自愈（离线比对 `VectorStore` 与 `chunks_fts` 的 `chunk_id` 集合）
+- [x] FTS 分字段建模与 BM25 权重策略（`symbol_tokens/breadcrumb/body/comments`）
+- [x] 索引一致性审计与自愈（离线比对 `VectorStore` 与 `chunks_fts` 的 `chunk_id` 集合）
 
 ## P4（长期）
 
@@ -59,3 +59,4 @@
 
 - 最近完成：P0/P1 四项（Rerank 降级、FTS 去重计分、查询分通道、per-file cap）。
 - 最近完成：P2 两项（精准扩覆盖策略、离线 benchmark 基线）。
+- 最近完成：P3 两项（FTS 分字段 BM25、chunk 索引一致性审计/自愈）。

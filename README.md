@@ -299,6 +299,17 @@ npm run test:e2e:mcp
 node --loader tsx src/search/eval/runOfflineBenchmark.ts path/to/dataset.jsonl --k 1,3,5,10
 ```
 
+
+#### 4) 索引一致性审计（P3）
+
+```bash
+# 检查向量索引与 chunks_fts 一致性
+contextweaver doctor .
+
+# 自动修复：删除 chunks_fts 中无对应向量的孤儿记录
+contextweaver doctor . --repair
+```
+
 ### 四、发布（维护者）
 
 如果你要一次性发布全部插件包（不含主包），可直接使用脚本：

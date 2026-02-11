@@ -15,6 +15,7 @@ import { batchUpdateVectorIndexHash, clearVectorIndexHash } from '../db/index.js
 import type { ProcessResult } from '../scanner/processor.js';
 import {
   batchDeleteFileChunksFts,
+  type ChunkFtsDoc,
   batchUpsertChunkFts,
   isChunksFtsInitialized,
 } from '../search/fts.js';
@@ -46,23 +47,85 @@ export interface ChunkFtsDocInput {
   chunkIndex: number;
   breadcrumb: string;
   displayCode: string;
+  language?: string;
 }
 
-export interface ChunkFtsDoc {
-  chunkId: string;
-  filePath: string;
-  chunkIndex: number;
-  breadcrumb: string;
-  content: string;
+const CODE_IDENTIFIER_REGEX = /[A-Za-z_][A-Za-z0-9_]*/g;
+const BLOCK_COMMENT_REGEX = /\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT_REGEX = /\/\/.*$/gm;
+const HASH_COMMENT_REGEX = /(^|\s)#.*$/gm;
+
+function toSnakeCase(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
+}
+
+function toCamelCase(value: string): string {
+  return value.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function expandSymbolToken(token: string): string[] {
+  const variants = new Set<string>();
+  variants.add(token);
+  variants.add(token.toLowerCase());
+
+  if (/[a-z][A-Z]/.test(token)) {
+    variants.add(toSnakeCase(token));
+  }
+
+  if (token.includes('_')) {
+    variants.add(toCamelCase(token));
+  }
+
+  return Array.from(variants).filter(Boolean);
+}
+
+function collectSymbolTokens(text: string): string[] {
+  const tokens = new Set<string>();
+
+  for (const match of text.matchAll(CODE_IDENTIFIER_REGEX)) {
+    const raw = match[0];
+    for (const variant of expandSymbolToken(raw)) {
+      tokens.add(variant);
+    }
+  }
+
+  return Array.from(tokens);
 }
 
 export function buildChunkFtsDoc(input: ChunkFtsDocInput): ChunkFtsDoc {
+  const comments: string[] = [];
+
+  let body = input.displayCode;
+  body = body.replace(BLOCK_COMMENT_REGEX, (comment) => {
+    comments.push(comment);
+    return '\n';
+  });
+  body = body.replace(LINE_COMMENT_REGEX, (comment) => {
+    comments.push(comment);
+    return '';
+  });
+
+  // Python/Ruby/Shell 等常见 # 注释（避免误伤 URL，要求 # 前面是空白或行首）
+  body = body.replace(HASH_COMMENT_REGEX, (_full, prefix: string) => {
+    const comment = _full.slice(prefix.length);
+    comments.push(comment);
+    return prefix;
+  });
+
+  const normalizedBody = body.trim() || input.displayCode.trim();
+  const symbolTokens = collectSymbolTokens(`${input.breadcrumb}\n${input.displayCode}`).join(' ');
+
   return {
     chunkId: input.chunkId,
     filePath: input.filePath,
     chunkIndex: input.chunkIndex,
+    symbolTokens,
     breadcrumb: input.breadcrumb,
-    content: input.displayCode,
+    body: normalizedBody,
+    comments: comments.join('\n').trim(),
   };
 }
 
