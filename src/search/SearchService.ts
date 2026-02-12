@@ -13,6 +13,7 @@ import { getRerankerClient } from '../api/reranker.js';
 import { getEmbeddingConfig } from '../config.js';
 import { initDb } from '../db/index.js';
 import { getIndexer, type Indexer } from '../indexer/index.js';
+import { getLanguage } from '../scanner/language.js';
 import { isDebugEnabled, logger } from '../utils/logger.js';
 import type { SearchResult as VectorSearchResult } from '../vectorStore/index.js';
 import { getVectorStore, type VectorStore } from '../vectorStore/index.js';
@@ -40,7 +41,7 @@ import type {
  * @param languages 语言白名单数组
  * @returns SQL WHERE 子句字符串，空数组或 undefined 返回 undefined
  */
-function buildLanguageWhereClause(languages?: string[]): string | undefined {
+export function buildLanguageWhereClause(languages?: string[]): string | undefined {
   if (!languages || languages.length === 0) {
     return undefined;
   }
@@ -144,7 +145,12 @@ export class SearchService {
     const rerankQuery = channels?.rerankQuery ?? query;
 
     // 1. 混合召回
-    const candidates = await this.hybridRetrieve(vectorQuery, lexicalQuery, languageWhereClause);
+    const candidates = await this.hybridRetrieve(
+      vectorQuery,
+      lexicalQuery,
+      languageWhereClause,
+      options?.languageFilter,
+    );
     const filteredCandidates = filePathFilter
       ? candidates.filter((chunk) => filePathFilter(chunk.filePath))
       : candidates;
@@ -181,9 +187,17 @@ export class SearchService {
     t0 = Date.now();
     const queryTokens = this.extractQueryTokens(query);
     const expanded = await this.expand(seeds, queryTokens);
-    const filteredExpanded = filePathFilter
+    let filteredExpanded = filePathFilter
       ? expanded.filter((chunk) => filePathFilter(chunk.filePath))
       : expanded;
+
+    const languageFilter = options?.languageFilter;
+    if (languageFilter && languageFilter.length > 0) {
+      const langSet = new Set(languageFilter);
+      filteredExpanded = filteredExpanded.filter((chunk) =>
+        langSet.has(getLanguage(chunk.filePath)),
+      );
+    }
     timingMs.expand = Date.now() - t0;
 
     // 6. 打包
@@ -214,11 +228,12 @@ export class SearchService {
     vectorQuery: string,
     lexicalQuery: string,
     languageWhereClause?: string,
+    languageFilter?: string[],
   ): Promise<ScoredChunk[]> {
     // 并行执行向量和词法召回
     const [vectorResults, lexicalResults] = await Promise.all([
       this.vectorRetrieve(vectorQuery, languageWhereClause),
-      this.lexicalRetrieve(lexicalQuery),
+      this.lexicalRetrieve(lexicalQuery, languageFilter),
     ]);
 
     logger.debug(
@@ -267,17 +282,17 @@ export class SearchService {
    * 优先使用 chunk 级 FTS（更精准）
    * 如果 chunks_fts 不可用，降级到文件级 FTS + overlap 下钻
    */
-  private async lexicalRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async lexicalRetrieve(query: string, languageFilter?: string[]): Promise<ScoredChunk[]> {
     if (!this.db || !this.vectorStore) return [];
 
     // 优先尝试 chunk 级 FTS（更精准）
     if (isChunksFtsInitialized(this.db)) {
-      return this.lexicalRetrieveFromChunksFts(query);
+      return this.lexicalRetrieveFromChunksFts(query, languageFilter);
     }
 
     // 降级到文件级 FTS + overlap 下钻
     if (isFtsInitialized(this.db)) {
-      return this.lexicalRetrieveFromFilesFts(query);
+      return this.lexicalRetrieveFromFilesFts(query, languageFilter);
     }
 
     logger.debug('FTS 未初始化，跳过词法召回');
@@ -287,12 +302,15 @@ export class SearchService {
   /**
    * 从 chunks_fts 直接搜索（最优方案）
    */
-  private async lexicalRetrieveFromChunksFts(query: string): Promise<ScoredChunk[]> {
-    // db 在 init() 中已初始化
+  private async lexicalRetrieveFromChunksFts(
+    query: string,
+    languageFilter?: string[],
+  ): Promise<ScoredChunk[]> {
     const chunkResults = searchChunksFts(
       this.db as Database.Database,
       query,
       this.config.lexTotalChunks,
+      languageFilter,
     );
 
     if (chunkResults.length === 0) {
@@ -351,13 +369,16 @@ export class SearchService {
   /**
    * 从 files_fts 搜索 + overlap 下钻（降级方案）
    */
-  private async lexicalRetrieveFromFilesFts(query: string): Promise<ScoredChunk[]> {
+  private async lexicalRetrieveFromFilesFts(
+    query: string,
+    languageFilter?: string[],
+  ): Promise<ScoredChunk[]> {
     // 1. FTS 搜索文件
-    // db 在 init() 中已初始化
     const fileResults = searchFilesFts(
       this.db as Database.Database,
       query,
       this.config.ftsTopKFiles,
+      languageFilter,
     );
     if (fileResults.length === 0) {
       logger.debug('FTS 无命中文件');

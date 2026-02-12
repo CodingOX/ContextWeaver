@@ -243,10 +243,7 @@ export function isChunksFtsInitialized(db: Database.Database): boolean {
 /**
  * 批量插入 chunk FTS 索引
  */
-export function batchUpsertChunkFts(
-  db: Database.Database,
-  chunks: ChunkFtsDoc[],
-): void {
+export function batchUpsertChunkFts(db: Database.Database, chunks: ChunkFtsDoc[]): void {
   const deleteStmt = db.prepare('DELETE FROM chunks_fts WHERE chunk_id = ?');
   const insertStmt = db.prepare(
     `INSERT INTO chunks_fts(
@@ -326,8 +323,8 @@ export function searchChunksFts(
   db: Database.Database,
   query: string,
   limit: number,
+  languages?: string[],
 ): ChunkFtsResult[] {
-  // 使用统一分词器
   const tokens = segmentQuery(query);
 
   if (tokens.length === 0) {
@@ -339,11 +336,17 @@ export function searchChunksFts(
     {
       rawQuery: query,
       tokens: tokens,
+      languages,
     },
     'Chunk FTS 分词结果',
   );
 
-  // 辅助：执行 SQL 查询
+  // 语言过滤子查询：通过 files 表关联实现（chunks_fts 无 language 列）
+  const langSubquery =
+    languages && languages.length > 0
+      ? `AND file_path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${l}'`).join(', ')}))`
+      : '';
+
   const runQuery = (qStr: string, queryLimit: number): ChunkFtsResult[] => {
     try {
       const rows = db
@@ -352,6 +355,7 @@ export function searchChunksFts(
                        bm25(chunks_fts, ?, ?, ?, ?) as score
                 FROM chunks_fts
                 WHERE chunks_fts MATCH ?
+                ${langSubquery}
                 ORDER BY score
                 LIMIT ?
             `)
@@ -369,7 +373,6 @@ export function searchChunksFts(
         score: number;
       }>;
 
-      // BM25 返回负值，转正
       return rows.map((r) => ({
         chunkId: r.chunk_id,
         filePath: r.file_path,
@@ -627,6 +630,7 @@ export function searchFilesFts(
   db: Database.Database,
   query: string,
   limit: number,
+  languages?: string[],
 ): FtsSearchResult[] {
   // 1. 使用统一分词器
   const tokens = segmentQuery(query);
@@ -640,9 +644,16 @@ export function searchFilesFts(
     {
       rawQuery: query,
       tokens: tokens,
+      languages,
     },
     'FTS 分词结果',
   );
+
+  // 语言过滤子查询：通过 files 表关联实现（files_fts 无 language 列）
+  const langSubquery =
+    languages && languages.length > 0
+      ? `AND path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${l}'`).join(', ')}))`
+      : '';
 
   // 辅助：执行 SQL 查询
   const runQuery = (qStr: string, queryLimit: number): FtsSearchResult[] => {
@@ -652,6 +663,7 @@ export function searchFilesFts(
                 SELECT path, bm25(files_fts) as score
                 FROM files_fts
                 WHERE files_fts MATCH ?
+                ${langSubquery}
                 ORDER BY score
                 LIMIT ?
             `)

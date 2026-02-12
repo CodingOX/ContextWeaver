@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { ensureFeedbackTables } from '../search/feedbackLoop.js';
 import {
   batchDeleteFileFts,
   batchUpsertFileFts,
   initChunksFts,
   initFilesFts,
 } from '../search/fts.js';
-import { ensureFeedbackTables } from '../search/feedbackLoop.js';
 
 const BASE_DIR = path.join(os.homedir(), '.contextweaver');
 
@@ -111,6 +111,7 @@ export function initDb(projectId: string): Database.Database {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
     CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);
+    CREATE INDEX IF NOT EXISTS idx_files_language ON files(language);
   `);
 
   // 创建 metadata 表（存储项目级配置）
