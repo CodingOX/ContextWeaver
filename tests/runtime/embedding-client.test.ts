@@ -74,7 +74,10 @@ test('遇到 413 时应自动拆分批次并成功返回全部结果', async () 
       '自动拆分后应保持原始顺序与全局索引',
     );
     assert.equal(requestBatchSizes[0], 3, '首轮应先按原始批次发送');
-    assert.ok(requestBatchSizes.some((size) => size === 1), '发生 413 后应拆分到单条请求');
+    assert.ok(
+      requestBatchSizes.some((size) => size === 1),
+      '发生 413 后应拆分到单条请求',
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -135,11 +138,7 @@ test('每次 HTTP 请求都应按 key 池轮询 Authorization', async () => {
   try {
     await client.embedBatch(['t1', 't2', 't3'], 1);
 
-    assert.deepEqual(usedAuthHeaders, [
-      'Bearer rr-key-1',
-      'Bearer rr-key-2',
-      'Bearer rr-key-1',
-    ]);
+    assert.deepEqual(usedAuthHeaders, ['Bearer rr-key-1', 'Bearer rr-key-2', 'Bearer rr-key-1']);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -173,6 +172,106 @@ test('网络重试时应切换到下一个 key', async () => {
 
     assert.equal(results.length, 1);
     assert.deepEqual(usedAuthHeaders, ['Bearer retry-key-1', 'Bearer retry-key-2']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('批处理中某批次 403 失败后，onProgress 不再被调用', async () => {
+  const client = new EmbeddingClient({ ...TEST_CONFIG, maxConcurrency: 5 });
+  const originalFetch = globalThis.fetch;
+  let fetchCallCount = 0;
+  const progressCalls: Array<{ completed: number; total: number }> = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    fetchCallCount++;
+    const body = JSON.parse(String(init?.body ?? '{}')) as { input?: string[] };
+    const batch = Array.isArray(body.input) ? body.input : [String(body.input ?? '')];
+
+    if (fetchCallCount === 1) {
+      return makeErrorResponse(403, 'HTTP 403');
+    }
+
+    await new Promise((r) => setTimeout(r, 50));
+    return makeSuccessResponse(batch.length);
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () =>
+        client.embedBatch(
+          Array.from({ length: 15 }, (_, i) => `text-${i}`),
+          3,
+          (completed, total) => {
+            progressCalls.push({ completed, total });
+          },
+        ),
+      /403/,
+    );
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    assert.equal(progressCalls.length, 0, '403 失败后 onProgress 不应被调用');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('批处理中某批次 403 失败后，后续排队批次不再发出 HTTP 请求', async () => {
+  const client = new EmbeddingClient({ ...TEST_CONFIG, maxConcurrency: 1 });
+  const originalFetch = globalThis.fetch;
+  let fetchCallCount = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCallCount++;
+
+    if (fetchCallCount === 1) {
+      return makeErrorResponse(403, 'HTTP 403');
+    }
+
+    await new Promise((r) => setTimeout(r, 10));
+    return makeSuccessResponse(1);
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () =>
+        client.embedBatch(
+          Array.from({ length: 10 }, (_, i) => `text-${i}`),
+          1,
+        ),
+      /403/,
+    );
+
+    const countAfterReject = fetchCallCount;
+    await new Promise((r) => setTimeout(r, 200));
+
+    assert.equal(fetchCallCount, countAfterReject, '403 后不应有额外的 HTTP 请求');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('正常批处理完成时行为不变（回归验证）', async () => {
+  const client = new EmbeddingClient({ ...TEST_CONFIG, maxConcurrency: 2 });
+  const originalFetch = globalThis.fetch;
+  const progressCalls: Array<{ completed: number; total: number }> = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { input?: string[] };
+    const batch = Array.isArray(body.input) ? body.input : [String(body.input ?? '')];
+    return makeSuccessResponse(batch.length);
+  }) as typeof fetch;
+
+  try {
+    const texts = ['a', 'b', 'c', 'd'];
+    const results = await client.embedBatch(texts, 2, (completed, total) => {
+      progressCalls.push({ completed, total });
+    });
+
+    assert.equal(results.length, 4);
+    assert.equal(progressCalls.length, 2, '2 个批次应产生 2 次回调');
+    assert.deepEqual(progressCalls[progressCalls.length - 1], { completed: 2, total: 2 });
   } finally {
     globalThis.fetch = originalFetch;
   }
