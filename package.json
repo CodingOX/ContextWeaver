@@ -1,6 +1,6 @@
 {
   "name": "@alistar.max/contextweaver",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "description": "A context weaving tool for LLMs",
   "license": "MIT",
   "author": "alistar.max",
@@ -30,7 +30,7 @@
     "build:release": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
     "dev": "tsup src/index.ts --format esm --dts --out-dir dist --sourcemap --watch",
     "fmt": "biome check --write ./src",
-    "test": "tsx tests/language-support.test.ts && tsx tests/runtime/registry.test.ts && tsx tests/runtime/docs-guard.test.ts && tsx tests/runtime/workspace-packages.test.ts && tsx tests/runtime/plugin-loader.test.ts && tsx tests/runtime/config-multi-key.test.ts && tsx tests/runtime/embedding-client.test.ts && tsx tests/runtime/reranker-client.test.ts && tsx tests/runtime/multi-key-docs.test.ts && tsx tests/runtime/parser-pool.test.ts && tsx tests/runtime/lang-ts21-plugin.test.ts && tsx tests/runtime/lang-ts22-plugin.test.ts && tsx tests/runtime/fallback-split.test.ts && tsx tests/runtime/search-rerank-fallback.test.ts && tsx tests/runtime/chunk-fts-content.test.ts && tsx tests/runtime/query-channel-build.test.ts && tsx tests/runtime/search-query-routing.test.ts && tsx tests/runtime/per-file-cap.test.ts && tsx tests/runtime/scanner-coverage-expansion.test.ts && tsx tests/runtime/chunk-fts-fields.test.ts && tsx tests/runtime/chunks-fts-search.test.ts && tsx tests/runtime/chunk-index-consistency.test.ts && tsx tests/runtime/feedback-loop.test.ts && tsx tests/runtime/lock-regression.test.ts && tsx tests/runtime/index-healing-convergence.test.ts && tsx tests/runtime/context-packer.test.ts && tsx tests/runtime/graph-expander.test.ts && tsx tests/runtime/test-script-completeness.test.ts",
+    "test": "tsx tests/language-support.test.ts && tsx tests/runtime/registry.test.ts && tsx tests/runtime/docs-guard.test.ts && tsx tests/runtime/workspace-packages.test.ts && tsx tests/runtime/plugin-loader.test.ts && tsx tests/runtime/config-multi-key.test.ts && tsx tests/runtime/embedding-client.test.ts && tsx tests/runtime/reranker-client.test.ts && tsx tests/runtime/multi-key-docs.test.ts && tsx tests/runtime/parser-pool.test.ts && tsx tests/runtime/lang-ts21-plugin.test.ts && tsx tests/runtime/lang-ts22-plugin.test.ts && tsx tests/runtime/fallback-split.test.ts && tsx tests/runtime/search-rerank-fallback.test.ts && tsx tests/runtime/chunk-fts-content.test.ts && tsx tests/runtime/query-channel-build.test.ts && tsx tests/runtime/search-query-routing.test.ts && tsx tests/runtime/per-file-cap.test.ts && tsx tests/runtime/scanner-coverage-expansion.test.ts && tsx tests/runtime/chunk-fts-fields.test.ts && tsx tests/runtime/chunks-fts-search.test.ts && tsx tests/runtime/chunk-index-consistency.test.ts && tsx tests/runtime/feedback-loop.test.ts && tsx tests/runtime/lock-regression.test.ts && tsx tests/runtime/index-healing-convergence.test.ts && tsx tests/runtime/context-packer.test.ts && tsx tests/runtime/graph-expander.test.ts && tsx tests/runtime/language-filter.test.ts && tsx tests/runtime/test-script-completeness.test.ts",
     "test:runtime": "tsx tests/runtime/registry.test.ts",
     "test:e2e:mcp": "pnpm build && tsx tests/mcp-e2e-smoke.ts",
     "prepublishOnly": "pnpm test",

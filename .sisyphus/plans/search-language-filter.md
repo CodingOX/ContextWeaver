@@ -273,7 +273,7 @@ Critical Path: Task 1 -> Task 2 -> Task 4 -> Task 5 -> Task 7
   - [ ] 指定语言过滤时，向量召回仅返回指定语言文件。
   - [ ] 无过滤时，向量召回行为与旧版一致。
 
-- [ ] 5. FTS 双路径 pre-filter + files(language) 索引
+- [x] 5. FTS 双路径 pre-filter + files(language) 索引
 
   **What to do**:
   - 在 `searchChunksFts` 与 `searchFilesFts` 新增可选语言过滤参数。
@@ -308,7 +308,7 @@ Critical Path: Task 1 -> Task 2 -> Task 4 -> Task 5 -> Task 7
   - [ ] files_fts fallback 路径过滤生效。
   - [ ] `idx_files_language` 被创建，查询可使用索引。
 
-- [ ] 6. 扩展阶段兜底语言过滤（防止跨阶段漏网）
+- [x] 6. 扩展阶段兜底语言过滤（防止跨阶段漏网）
 
   **What to do**:
   - 在 `SearchService` 的 expand 后（与现有 pathFilter 同层）增加语言兜底过滤。
@@ -335,7 +335,7 @@ Critical Path: Task 1 -> Task 2 -> Task 4 -> Task 5 -> Task 7
   **Acceptance Criteria**:
   - [ ] expanded 结果中不存在未授权语言。
 
-- [ ] 7. 单元测试与回归验证
+- [x] 7. 单元测试与回归验证
 
   **What to do**:
   - 增加 language 分类测试、参数校验测试、向量/FTS pre-filter 测试、无参数回归测试。

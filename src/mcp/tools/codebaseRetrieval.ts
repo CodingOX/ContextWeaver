@@ -121,7 +121,7 @@ const MAX_RAW_TOP_N = 20;
 /**
  * 语言过滤参数配置
  */
-interface LanguageFilterConfig {
+export interface LanguageFilterConfig {
   source_code_only?: boolean;
   include_languages?: string[];
   exclude_languages?: string[];
@@ -131,7 +131,7 @@ interface LanguageFilterConfig {
  * 校验语言过滤参数的冲突规则
  * @throws {Error} 参数冲突时抛出错误
  */
-function validateLanguageFilterConflicts(config: LanguageFilterConfig): void {
+export function validateLanguageFilterConflicts(config: LanguageFilterConfig): void {
   const { source_code_only, include_languages, exclude_languages } = config;
 
   // 规则 1: source_code_only 与 include_languages 互斥
@@ -152,7 +152,7 @@ function validateLanguageFilterConflicts(config: LanguageFilterConfig): void {
  * 校验语言值是否在白名单中
  * @throws {Error} 包含未知语言时抛出错误
  */
-function validateLanguageWhitelist(languages?: string[]): void {
+export function validateLanguageWhitelist(languages?: string[]): void {
   if (!languages || languages.length === 0) {
     return;
   }
@@ -169,7 +169,7 @@ function validateLanguageWhitelist(languages?: string[]): void {
  * 归一化语言过滤参数为统一的 languageFilter 数组
  * @returns 归一化后的语言过滤列表，undefined 表示无语言过滤
  */
-function normalizeLanguageFilter(config: LanguageFilterConfig): string[] | undefined {
+export function normalizeLanguageFilter(config: LanguageFilterConfig): string[] | undefined {
   const { source_code_only, include_languages, exclude_languages } = config;
 
   // 无任何语言过滤参数
