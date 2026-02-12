@@ -96,6 +96,14 @@ export interface QueryChannels {
   rerankQuery: string;
 }
 
+/** 上下文构建选项 */
+export interface BuildContextPackOptions {
+  /** 文件路径过滤器，返回 true 表示保留 */
+  filePathFilter?: (filePath: string) => boolean;
+  /** 语言过滤白名单，空数组或 undefined 表示不过滤 */
+  languageFilter?: string[];
+}
+
 // ===========================================
 // 搜索结果类型
 // ===========================================

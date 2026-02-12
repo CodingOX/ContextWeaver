@@ -79,11 +79,64 @@ export function isAllowedExtension(filePath: string): boolean {
 }
 
 /**
+ * 语言分类常量
+ */
+export const LANGUAGE_CATEGORIES = {
+  code: [
+    'typescript',
+    'javascript',
+    'python',
+    'go',
+    'rust',
+    'java',
+    'kotlin',
+    'swift',
+    'c_sharp',
+    'cpp',
+    'c',
+    'ruby',
+    'php',
+    'dart',
+    'lua',
+    'r',
+    'shell',
+    'powershell',
+    'sql',
+    'html',
+    'css',
+    'scss',
+    'sass',
+    'less',
+    'vue',
+    'svelte',
+  ],
+  docs: ['markdown'],
+  config: ['json', 'yaml', 'toml', 'xml'],
+} as const;
+
+/**
  * 获取白名单扩展名对应的语言列表
  * @returns 语言标识数组
  */
 export function getAllowedLanguages(): string[] {
   return [...ALLOWED_LANGUAGES];
+}
+
+/**
+ * 获取代码类语言列表（排除文档和配置类语言）
+ * @returns 代码类语言标识数组
+ */
+export function getCodeLanguages(): string[] {
+  return [...LANGUAGE_CATEGORIES.code];
+}
+
+/**
+ * 判断语言是否在白名单中
+ * @param lang 语言标识
+ * @returns 是否为已知语言
+ */
+export function isKnownLanguage(lang: string): boolean {
+  return ALLOWED_LANGUAGES.has(lang);
 }
 
 /**
