@@ -26,7 +26,34 @@ import {
   segmentQuery,
 } from './fts.js';
 import { getGraphExpander } from './GraphExpander.js';
-import type { ContextPack, QueryChannels, ScoredChunk, SearchConfig } from './types.js';
+import type {
+  BuildContextPackOptions,
+  ContextPack,
+  QueryChannels,
+  ScoredChunk,
+  SearchConfig,
+} from './types.js';
+
+/**
+ * 将 languageFilter 转换为 LanceDB WHERE 子句
+ *
+ * @param languages 语言白名单数组
+ * @returns SQL WHERE 子句字符串，空数组或 undefined 返回 undefined
+ */
+function buildLanguageWhereClause(languages?: string[]): string | undefined {
+  if (!languages || languages.length === 0) {
+    return undefined;
+  }
+
+  if (languages.length === 1) {
+    // 单语言: language = 'typescript'
+    return `language = '${languages[0]}'`;
+  }
+
+  // 多语言: language IN ('typescript', 'javascript', 'python')
+  const escapedLangs = languages.map((lang) => `'${lang}'`).join(', ');
+  return `language IN (${escapedLangs})`;
+}
 
 /**
  * 在融合后、Rerank 前按文件施加候选上限
@@ -102,21 +129,32 @@ export class SearchService {
   /**
    * 构建上下文包（用于问答/生成）
    */
-  async buildContextPack(query: string, channels?: Partial<QueryChannels>): Promise<ContextPack> {
+  async buildContextPack(
+    query: string,
+    channels?: Partial<QueryChannels>,
+    options?: BuildContextPackOptions,
+  ): Promise<ContextPack> {
     const timingMs: Record<string, number> = {};
     let t0 = Date.now();
+    const filePathFilter = options?.filePathFilter;
+    const languageWhereClause = buildLanguageWhereClause(options?.languageFilter);
 
     const vectorQuery = channels?.vectorQuery ?? query;
     const lexicalQuery = channels?.lexicalQuery ?? query;
     const rerankQuery = channels?.rerankQuery ?? query;
 
     // 1. 混合召回
-    const candidates = await this.hybridRetrieve(vectorQuery, lexicalQuery);
+    const candidates = await this.hybridRetrieve(vectorQuery, lexicalQuery, languageWhereClause);
+    const filteredCandidates = filePathFilter
+      ? candidates.filter((chunk) => filePathFilter(chunk.filePath))
+      : candidates;
     timingMs.retrieve = Date.now() - t0;
 
     // 2. 取 topM
     t0 = Date.now();
-    const topM = candidates.sort((a, b) => b.score - a.score).slice(0, this.config.fusedTopM);
+    const topM = filteredCandidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.config.fusedTopM);
     const cappedTopM = applyPreRerankPerFileCap(topM, this.config.preRerankPerFileCap);
 
     // 3. Rerank → seeds（失败时降级到融合结果）
@@ -143,18 +181,21 @@ export class SearchService {
     t0 = Date.now();
     const queryTokens = this.extractQueryTokens(query);
     const expanded = await this.expand(seeds, queryTokens);
+    const filteredExpanded = filePathFilter
+      ? expanded.filter((chunk) => filePathFilter(chunk.filePath))
+      : expanded;
     timingMs.expand = Date.now() - t0;
 
     // 6. 打包
     t0 = Date.now();
     const packer = new ContextPacker(this.projectId, this.config);
-    const files = await packer.pack([...seeds, ...expanded]);
+    const files = await packer.pack([...seeds, ...filteredExpanded]);
     timingMs.pack = Date.now() - t0;
 
     return {
       query,
       seeds,
-      expanded,
+      expanded: filteredExpanded,
       files,
       debug: {
         wVec: this.config.wVec,
@@ -169,10 +210,14 @@ export class SearchService {
   /**
    * 混合召回：向量 + 词法
    */
-  private async hybridRetrieve(vectorQuery: string, lexicalQuery: string): Promise<ScoredChunk[]> {
+  private async hybridRetrieve(
+    vectorQuery: string,
+    lexicalQuery: string,
+    languageWhereClause?: string,
+  ): Promise<ScoredChunk[]> {
     // 并行执行向量和词法召回
     const [vectorResults, lexicalResults] = await Promise.all([
-      this.vectorRetrieve(vectorQuery),
+      this.vectorRetrieve(vectorQuery, languageWhereClause),
       this.lexicalRetrieve(lexicalQuery),
     ]);
 
@@ -196,10 +241,10 @@ export class SearchService {
   /**
    * 向量召回
    */
-  private async vectorRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async vectorRetrieve(query: string, filter?: string): Promise<ScoredChunk[]> {
     if (!this.indexer) throw new Error('SearchService not initialized');
 
-    const results = await this.indexer.textSearch(query, this.config.vectorTopK);
+    const results = await this.indexer.textSearch(query, this.config.vectorTopK, filter);
     if (!results) return [];
 
     // 按距离排序并转换

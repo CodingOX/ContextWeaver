@@ -243,7 +243,7 @@ Critical Path: Task 1 -> Task 2 -> Task 4 -> Task 5 -> Task 7
   **Acceptance Criteria**:
   - [ ] 编译通过，调用链可接收 `languageFilter`。
 
-- [ ] 4. 向量召回 pre-filter 接入（SearchService + Indexer 管道）
+- [x] 4. 向量召回 pre-filter 接入（SearchService + Indexer 管道）
 
   **What to do**:
   - 在 `SearchService` 中接收 `options.languageFilter`。

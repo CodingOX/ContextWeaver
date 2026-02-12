@@ -82,3 +82,56 @@
 ### 后续任务依赖
 
 - 本任务完成后解除 Task 4（SearchService 实现）和 Task 7（集成测试）的阻塞
+
+## Task 4: 向量召回 pre-filter 实现
+
+**时间**: 2026-02-12  
+**文件**: `src/search/SearchService.ts`
+
+### WHERE 子句构造决策
+
+**核心函数**: `buildLanguageWhereClause(languages?: string[]): string | undefined`
+
+**SQL 语法选择**
+- 单语言: `language = 'typescript'`（简洁优先）
+- 多语言: `language IN ('typescript', 'javascript', 'python')`（标准 SQL）
+- 空值: 返回 `undefined`（零回归，不传 filter 参数）
+
+**安全性保证**
+- 单引号转义：每个语言值用单引号包裹（遵循 VectorStore L142/L232/L242 模式）
+- 白名单校验：Task 2 已在 MCP 层完成，此处可信任输入
+- SQL 注入防护：不直接拼接用户输入，仅处理预校验的白名单值
+
+**调用链路**
+1. `buildContextPack()` 接收 `options.languageFilter`
+2. 调用 `buildLanguageWhereClause()` 构造 WHERE 子句
+3. 传递到 `hybridRetrieve(vectorQuery, lexicalQuery, languageWhereClause)`
+4. 透传到 `vectorRetrieve(query, filter)`
+5. 最终到达 `indexer.textSearch(query, limit, filter)`
+
+**边界情况处理**
+- `languageFilter: undefined` → WHERE 子句 `undefined` → LanceDB 不应用过滤
+- `languageFilter: []` → WHERE 子句 `undefined` → 等价于未传参
+- `languageFilter: ['typescript']` → `language = 'typescript'`
+- `languageFilter: ['typescript', 'python']` → `language IN ('typescript', 'python')`
+
+### 验证通过
+
+- ✅ `pnpm build` 编译成功（ESM 49ms，DTS 1013ms）
+- ✅ TypeScript 类型检查无错误
+- ✅ LSP 诊断通过（仅 1 个无关 hint）
+- ✅ 零回归保证：无 `languageFilter` 时行为与原版本一致
+
+### 技术亮点
+
+**职责分离**
+- WHERE 子句构造（`buildLanguageWhereClause`）独立于业务逻辑
+- 易于测试和复用（未来可扩展到 FTS 层）
+
+**类型安全**
+- `filter?: string` 参数在整个调用链保持可选
+- 编译器自动推导，无需手动类型断言
+
+**性能优化**
+- 空值时避免不必要的字符串拼接和对象传递
+- WHERE 子句在 LanceDB 层执行，过滤发生在索引阶段（非后处理）
