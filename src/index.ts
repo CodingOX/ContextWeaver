@@ -61,18 +61,20 @@ cli.command('init', '初始化 ContextWeaver 配置').action(async () => {
   const defaultEnvContent = `# ContextWeaver 示例环境变量配置文件
 
 # Embedding API 配置（必需）
-# 多 key（可选，逗号分隔）。与 EMBEDDINGS_API_KEY 兼容；同时配置时优先使用本项。
-# EMBEDDINGS_API_KEYS=key-1,key-2
-EMBEDDINGS_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+EMBEDDINGS_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# EMBEDDINGS_API_KEY=your-api-key-here
 EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
 EMBEDDINGS_MODEL=BAAI/bge-m3
 EMBEDDINGS_MAX_CONCURRENCY=10
 EMBEDDINGS_DIMENSIONS=1024
 
 # Reranker 配置（必需）
-# 多 key（可选，逗号分隔）。与 RERANK_API_KEY 兼容；同时配置时优先使用本项。
-# RERANK_API_KEYS=key-1,key-2
-RERANK_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+RERANK_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# RERANK_API_KEY=your-api-key-here
 RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
 RERANK_MODEL=BAAI/bge-reranker-v2-m3
 RERANK_TOP_N=20

@@ -62,7 +62,7 @@ npm install -g @alistar.max/contextweaver
 npm install -g @alistar.max/contextweaver-lang-all
 ```
 
-> 如需更多语言支持，可通过**可选语言插件**按需安装。
+> 如需特定语言支持，可通过**可选语言插件**按需安装（见下方 FAQ）。
 
 ### 二、使用
 
@@ -79,18 +79,20 @@ cw init
 
 ```bash
 # Embedding API 配置（必需）
-# 多 key（可选，逗号分隔）。与 EMBEDDINGS_API_KEY 兼容；同时配置时优先使用本项。
-# EMBEDDINGS_API_KEYS=key-1,key-2
-EMBEDDINGS_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+EMBEDDINGS_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# EMBEDDINGS_API_KEY=your-api-key-here
 EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
 EMBEDDINGS_MODEL=BAAI/bge-m3
 EMBEDDINGS_MAX_CONCURRENCY=10
 EMBEDDINGS_DIMENSIONS=1024
 
 # Reranker 配置（必需）
-# 多 key（可选，逗号分隔）。与 RERANK_API_KEY 兼容；同时配置时优先使用本项。
-# RERANK_API_KEYS=key-1,key-2
-RERANK_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+RERANK_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# RERANK_API_KEY=your-api-key-here
 RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
 RERANK_MODEL=BAAI/bge-reranker-v2-m3
 RERANK_TOP_N=20
@@ -102,6 +104,8 @@ RERANK_TOP_N=20
 # INCLUDE_PATTERNS=**/*.prompt,**/*.cue
 ```
 
+> 💡 **多 Key 说明**：`EMBEDDINGS_API_KEYS` / `RERANK_API_KEYS` 支持逗号分隔多 key（如 `key-1,key-2,key-3`），运行时自动轮转，可有效缓解单 key 速率限制。即使当前只有一个 key，也推荐使用 `_KEYS` 变量，后续添加新 key 时只需追加逗号即可。
+
 如果你希望在项目内持久化 include 规则，可在项目根目录创建 `.contextweaverinclude`，每行一个 glob 规则，例如：
 
 ```bash
@@ -109,16 +113,9 @@ RERANK_TOP_N=20
 **/*.cue
 ```
 
-
-说明：
-
-- `EMBEDDINGS_API_KEYS` / `RERANK_API_KEYS` 支持逗号分隔多 key。
-- 与 `EMBEDDINGS_API_KEY` / `RERANK_API_KEY` 完全兼容。
-- 若同时配置，多 key 变量优先，单 key 变量会作为兜底补充。
-
 #### 2) MCP 集成配置
 
-##### 2.1 Claude Desktop 配置
+##### 2.1 Claude 配置
 
 在 Claude CLI/OpenCode 中的配置文件中添加：
 
@@ -148,29 +145,6 @@ startup_timeout_sec = 20
 tool_timeout_sec = 30
 ```
 
-#### 3) 索引代码库
-
-```bash
-# 推荐手动在，在目标代码库根目录执行
-cd /path/to/your/project
-contextweaver index
-
-# 指定路径[可选]
-contextweaver index /path/to/your/project
-
-# 强制重新索引[可选]
-contextweaver index --force
-```
-
-#### 4) 本地搜索
-
-```bash
-# 语义搜索
-cw search --information-request "用户认证流程是如何实现的？"
-
-# 带精确术语
-cw search --information-request "数据库连接逻辑" --technical-terms "DatabasePool,Connection"
-```
 
 
 ### 三、测试
@@ -278,95 +252,16 @@ contextweaver index --force
 
 > 注意：需先正确配置 Embedding/Reranker 环境变量，否则 MCP 会先提示配置，暂不执行索引。
 
-#### 3) 项目回归测试（开发者）
+#### 3) 开发者入口
 
-```bash
-# 全量单元测试入口（runtime + benchmark）
-npm run test:unit:all
+以下开发者专用内容已迁移至独立文档：`docs/developer/developer-guide.md`
 
-# 语言支持与运行时回归（不含 benchmark）
-npm test
+- 项目回归测试（全量单测、benchmark、MCP E2E）
+- 离线自动调参与隐式反馈闭环
+- 索引一致性审计（doctor）
+- 维护者发布流程（插件批量发布与主包单独发版）
 
-# 离线 benchmark 基线（Recall@K / MRR / nDCG）
-npm run test:benchmark
-npm run benchmark:offline
-
-# MCP 多语言端到端冒烟测试
-npm run test:e2e:mcp
-```
-
-离线评测默认样例数据位于 `tests/benchmark/fixtures/sample-offline-benchmark.jsonl`。
-
-```bash
-# 自定义数据集与 K 列表
-node --loader tsx src/search/eval/runOfflineBenchmark.ts path/to/dataset.jsonl --k 1,3,5,10
-```
-
-
-#### 4) 离线自动调参（P4）
-
-```bash
-# 运行自动调参单元测试
-npm run test:benchmark
-
-# 使用样例数据集执行调参
-npm run benchmark:tune
-
-# 通过 CLI 调参（支持自定义 target/k/grid）
-contextweaver tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl --target mrr --k 1,3,5 --top 5
-```
-
-调参数据集最小字段：`id/query/vectorRetrieved/lexicalRetrieved/relevant`。
-
-#### 5) 隐式反馈闭环摘要（P4）
-
-```bash
-# 查看最近 7 天隐式反馈摘要
-contextweaver feedback . --days 7 --top 10
-```
-
-输出包含：`totalEvents`、`zeroHitRate`、`implicitSuccessRate` 及高复用文件 TopN。
-
-#### 6) 索引一致性审计（P3）
-
-```bash
-# 检查向量索引与 chunks_fts 一致性
-contextweaver doctor .
-
-# 自动修复：删除 chunks_fts 中无对应向量的孤儿记录
-contextweaver doctor . --repair
-```
-
-### 四、发布（维护者）
-
-如果你要一次性发布全部插件包（不含主包），可直接使用脚本：
-
-```bash
-# 先做发布前校验
-npm install
-npm test
-npm run build
-npm run --workspaces --if-present build
-
-# 演练（不真正发布）
-bash scripts/publish-plugins.sh --version 0.0.8 --dry-run
-
-# 正式发布（会自动跳过 npm 上已存在的版本）
-bash scripts/publish-plugins.sh --version 0.0.8
-```
-
-可选参数：
-
-- `--tag <tag>`：指定 npm dist-tag（默认 `latest`）
-- `--provenance`：强制附带 provenance（需支持 OIDC 的 CI）
-- `--no-provenance`：禁用 provenance
-- 不传 `--version`：按各插件目录下 `package.json` 的 version 发布
-
-> provenance 默认是 auto：本地环境自动关闭，CI（含 OIDC）自动开启。
-> 发布顺序与 CI 一致：单语言包 → `lang-all` → 兼容包（`lang-ts21`/`lang-ts22`）。
-> 本地手动发版完整手册见：`docs/release/local-manual-release.md`
-
-### 五、MCP 工具说明
+### 四、MCP 工具说明
 
 ContextWeaver 提供一个核心 MCP 工具：`codebase-retrieval`
 
@@ -383,6 +278,29 @@ ContextWeaver 提供一个核心 MCP 工具：`codebase-retrieval`
 - **意图与术语分离**：`information_request` 描述「做什么」，`technical_terms` 过滤「叫什么」
 - **黄金默认值**：提供同文件上下文，禁止默认跨文件抓取
 - **回归代理本能**：工具只负责定位，跨文件探索由 Agent 自主发起
+
+### 五、非 MCP 使用示例（CLI 模式）
+
+如果你不接 MCP 客户端，也可以直接在终端使用 ContextWeaver：
+
+```bash
+# 1) 进入目标代码仓库
+cd /path/to/your/project
+
+# 2) 首次建议强制索引（后续可省略 --force）
+contextweaver index --force
+
+# 3) 直接查询并保存结果
+contextweaver search \
+  --information-request "登录鉴权流程在哪里实现" \
+  --technical-terms "AuthService,login,token" \
+  | tee /tmp/contextweaver-cli-search.txt
+
+# 4) 快速做一次命中校验
+rg "AuthService|login|token" /tmp/contextweaver-cli-search.txt
+```
+
+适用场景：本地调试、CI 冒烟、无需接入 MCP 的脚本化检索。
 
 ## 🏗️ 架构设计
 
@@ -483,14 +401,14 @@ contextweaver/
 
 | 变量名 | 必需 | 默认值 | 描述 |
 |--------|------|--------|------|
-| `EMBEDDINGS_API_KEYS` | ✅（与 `EMBEDDINGS_API_KEY` 二选一） | - | 多 Embedding API Key（逗号分隔）；与单 key 兼容，同时配置时优先使用本项 |
-| `EMBEDDINGS_API_KEY` | ✅（与 `EMBEDDINGS_API_KEYS` 二选一） | - | 单 Embedding API Key（兼容写法）；同时配置时作为兜底补充 |
+| `EMBEDDINGS_API_KEYS` | ✅（推荐） | - | Embedding API Key（逗号分隔多 key，支持限速轮转） |
+| `EMBEDDINGS_API_KEY` | ❌ | - | 单 key 兼容写法（同时配置时 `_KEYS` 优先） |
 | `EMBEDDINGS_BASE_URL` | ✅ | - | Embedding API 地址 |
 | `EMBEDDINGS_MODEL` | ✅ | - | Embedding 模型名称 |
 | `EMBEDDINGS_MAX_CONCURRENCY` | ❌ | 10 | Embedding 并发数 |
 | `EMBEDDINGS_DIMENSIONS` | ❌ | 1024 | 向量维度 |
-| `RERANK_API_KEYS` | ✅（与 `RERANK_API_KEY` 二选一） | - | 多 Reranker API Key（逗号分隔）；与单 key 兼容，同时配置时优先使用本项 |
-| `RERANK_API_KEY` | ✅（与 `RERANK_API_KEYS` 二选一） | - | 单 Reranker API Key（兼容写法）；同时配置时作为兜底补充 |
+| `RERANK_API_KEYS` | ✅（推荐） | - | Reranker API Key（逗号分隔多 key，支持限速轮转） |
+| `RERANK_API_KEY` | ❌ | - | 单 key 兼容写法（同时配置时 `_KEYS` 优先） |
 | `RERANK_BASE_URL` | ✅ | - | Reranker API 地址 |
 | `RERANK_MODEL` | ✅ | - | Reranker 模型名称 |
 | `RERANK_TOP_N` | ❌ | 20 | Rerank 返回数量 |

@@ -460,14 +460,16 @@ ${missingVars.map((v) => `- \`${v}\``).join('\n')}
 
 \`\`\`bash
 # Embedding API 配置（必需）
-# 多 key（可选，逗号分隔）。与 EMBEDDINGS_API_KEY 兼容；同时配置时优先使用本项。
-# EMBEDDINGS_API_KEYS=key-1,key-2
-EMBEDDINGS_API_KEY=your-api-key-here  # ← 单 key 写法（兼容）
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+EMBEDDINGS_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# EMBEDDINGS_API_KEY=your-api-key-here
 
 # Reranker 配置（必需）
-# 多 key（可选，逗号分隔）。与 RERANK_API_KEY 兼容；同时配置时优先使用本项。
-# RERANK_API_KEYS=key-1,key-2
-RERANK_API_KEY=your-api-key-here      # ← 单 key 写法（兼容）
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+RERANK_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# RERANK_API_KEY=your-api-key-here
 \`\`\`
 
 保存文件后重新调用此工具即可。
