@@ -136,13 +136,12 @@ export function buildChunkFtsDoc(input: ChunkFtsDocInput): ChunkFtsDoc {
 export class Indexer {
   private projectId: string;
   private vectorStore: VectorStore | null = null;
-  private embeddingClient: EmbeddingClient;
+  private embeddingClient: EmbeddingClient | null = null;
   private vectorDim: number;
 
   constructor(projectId: string, vectorDim = 1024) {
     this.projectId = projectId;
     this.vectorDim = vectorDim;
-    this.embeddingClient = getEmbeddingClient();
   }
 
   /**
@@ -150,6 +149,18 @@ export class Indexer {
    */
   async init(): Promise<void> {
     this.vectorStore = await getVectorStore(this.projectId, this.vectorDim);
+  }
+
+  /**
+   * Embedding 客户端改为惰性初始化。
+   *
+   * 这样无 chunk 文件的收敛路径不会因为没有真实 embedding 配置而提前失败。
+   */
+  private getOrCreateEmbeddingClient(): EmbeddingClient {
+    if (!this.embeddingClient) {
+      this.embeddingClient = getEmbeddingClient();
+    }
+    return this.embeddingClient;
   }
 
   /**
@@ -297,7 +308,7 @@ export class Indexer {
     let embeddings: number[][];
     try {
       // 传递进度回调给 embedBatch，让它在每个 API 批次完成时报告进度
-      const results = await this.embeddingClient.embedBatch(allTexts, 20, onProgress);
+      const results = await this.getOrCreateEmbeddingClient().embedBatch(allTexts, 20, onProgress);
       embeddings = results.map((r) => r.embedding);
     } catch (err) {
       const error = err as { message?: string; stack?: string };
@@ -453,7 +464,7 @@ export class Indexer {
    * 文本搜索（先 embedding 再向量搜索）
    */
   async textSearch(query: string, limit = 10, filter?: string) {
-    const queryVector = await this.embeddingClient.embed(query);
+    const queryVector = await this.getOrCreateEmbeddingClient().embed(query);
     return this.search(queryVector, limit, filter);
   }
 

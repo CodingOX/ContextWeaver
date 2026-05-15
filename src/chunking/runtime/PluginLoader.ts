@@ -1,17 +1,7 @@
 import type { LanguageRuntime } from './LanguageRuntime.js';
 
 export const CORE_PLUGIN_CANDIDATES = [
-  '@alistar.max/contextweaver-lang-all',
-  '@alistar.max/contextweaver-lang-typescript',
-  '@alistar.max/contextweaver-lang-kotlin',
   '@alistar.max/contextweaver-lang-csharp',
-  '@alistar.max/contextweaver-lang-cpp',
-  '@alistar.max/contextweaver-lang-java',
-  '@alistar.max/contextweaver-lang-ruby',
-  '@alistar.max/contextweaver-lang-c',
-  '@alistar.max/contextweaver-lang-php',
-  '@alistar.max/contextweaver-lang-rust',
-  '@alistar.max/contextweaver-lang-swift',
 ] as const;
 
 export const LEGACY_PLUGIN_CANDIDATES = [
@@ -21,7 +11,6 @@ export const LEGACY_PLUGIN_CANDIDATES = [
 
 export const DEFAULT_PLUGIN_CANDIDATES = [
   ...CORE_PLUGIN_CANDIDATES,
-  ...LEGACY_PLUGIN_CANDIDATES,
 ] as const;
 
 type RuntimeFactory = () => unknown;

@@ -58,11 +58,12 @@
 ```bash
 # 默认安装仅内置 JavaScript、Python、Go 的 AST 分片能力。
 npm install -g @alistar.max/contextweaver
-# 推荐安装全部语言插件： TypeScript、Kotlin、C#、C++、Java、Ruby、C、PHP、Rust、Swift
-npm install -g @alistar.max/contextweaver-lang-all
+# 当前默认推荐的额外 AST 插件：C#
+npm install -g @alistar.max/contextweaver-lang-csharp
 ```
 
-> 如需特定语言支持，可通过**可选语言插件**按需安装（见下方 FAQ）。
+> 如需更多语言支持，可通过**可选语言插件**按需安装（见下方 FAQ）。
+> 说明：`lang-all` 与部分旧插件仍可手动安装，但它们依赖的上游 grammar peer 版本尚未完全收敛到 `tree-sitter@0.25.x`，不再作为默认推荐安装链。
 
 ### 二、使用
 
@@ -195,23 +196,31 @@ rg "PluginLoader\.ts|DEFAULT_PLUGIN_CANDIDATES" /tmp/contextweaver-smoke.txt
 
 ##### Q1：如何按需安装单语言插件？
 
-- TypeScript：`npm install -g @alistar.max/contextweaver-lang-typescript`
-- Kotlin：`npm install -g @alistar.max/contextweaver-lang-kotlin`
-- C#：`npm install -g @alistar.max/contextweaver-lang-csharp`
-- C++：`npm install -g @alistar.max/contextweaver-lang-cpp`
-- Java：`npm install -g @alistar.max/contextweaver-lang-java`
-- Ruby：`npm install -g @alistar.max/contextweaver-lang-ruby`
-- C：`npm install -g @alistar.max/contextweaver-lang-c`
-- PHP：`npm install -g @alistar.max/contextweaver-lang-php`
-- Rust：`npm install -g @alistar.max/contextweaver-lang-rust`
-- Swift：`npm install -g @alistar.max/contextweaver-lang-swift`
-- TypeScript 5.8 兼容包（不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts21`
-- TypeScript 5.9 兼容包（不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts22`
+- 默认推荐：C#：`npm install -g @alistar.max/contextweaver-lang-csharp`
+- 仍可手动安装：TypeScript：`npm install -g @alistar.max/contextweaver-lang-typescript`
+- 仍可手动安装：Kotlin：`npm install -g @alistar.max/contextweaver-lang-kotlin`
+- 仍可手动安装：C++：`npm install -g @alistar.max/contextweaver-lang-cpp`
+- 仍可手动安装：Java：`npm install -g @alistar.max/contextweaver-lang-java`
+- 仍可手动安装：Ruby：`npm install -g @alistar.max/contextweaver-lang-ruby`
+- 仍可手动安装：C：`npm install -g @alistar.max/contextweaver-lang-c`
+- 仍可手动安装：PHP：`npm install -g @alistar.max/contextweaver-lang-php`
+- 仍可手动安装：Rust：`npm install -g @alistar.max/contextweaver-lang-rust`
+- 仍可手动安装：Swift：`npm install -g @alistar.max/contextweaver-lang-swift`
+- TypeScript 5.8 兼容包（legacy，不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts21`
+- TypeScript 5.9 兼容包（legacy，不推荐新安装）：`npm install -g @alistar.max/contextweaver-lang-ts22`
+- 聚合包（非默认推荐安装链）：`npm install -g @alistar.max/contextweaver-lang-all`
 
 ##### Q2：Node 24 能安装吗？
 
 可以。当前版本支持 `Node.js >= 20 且 < 25`，包含 Node 24。
 建议优先使用 Node 22/24 LTS。
+
+但在 macOS + Node 24 环境下，部分原生依赖可能会触发本地编译。
+如果安装阶段遇到编译失败，可临时使用：
+
+```bash
+CXXFLAGS='-std=c++20' npm install -g @alistar.max/contextweaver
+```
 
 ##### Q3：不装插件会影响使用吗？
 
@@ -375,7 +384,7 @@ contextweaver/
 │   ├── mcp/                  # MCP 服务端
 │   └── utils/                # 日志/编码/锁等工具
 ├── packages/
-│   ├── lang-all/             # 推荐：一键安装全部可选语言
+│   ├── lang-all/             # 聚合插件包（可手动安装，非默认推荐链）
 │   ├── lang-typescript/      # 单语言插件示例（其余语言同模式）
 │   ├── lang-rust/            # 单语言插件示例
 │   ├── lang-ts21/            # 兼容插件（不推荐新安装）
@@ -465,20 +474,22 @@ ContextWeaver 当前采用“主包内置 + 可选插件”两层能力模型：
 | JavaScript | ✅ | ✅ | ✅ | `.js`, `.jsx`, `.mjs` |
 | Python | ✅ | ✅ | ✅ | `.py` |
 | Go | ✅ | ✅ | ✅ | `.go` |
-| TypeScript | ❌ | ✅（`lang-all` 或 `lang-typescript`） | ✅ | `.ts`, `.tsx` |
-| Kotlin | ❌ | ✅（`lang-all` 或 `lang-kotlin`） | ✅ | `.kt` |
-| C# | ❌ | ✅（`lang-all` 或 `lang-csharp`） | ✅ | `.cs`, `.csx` |
-| C++ | ❌ | ✅（`lang-all` 或 `lang-cpp`） | ✅ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
-| Java | ❌ | ✅（`lang-all` 或 `lang-java`） | ✅ | `.java` |
-| Ruby | ❌ | ✅（`lang-all` 或 `lang-ruby`） | ✅ | `.rb` |
-| C | ❌ | ✅（`lang-all` 或 `lang-c`） | ✅ | `.c`, `.h` |
-| PHP | ❌ | ✅（`lang-all` 或 `lang-php`） | ✅ | `.php` |
-| Rust | ❌ | ✅（`lang-all` 或 `lang-rust`） | ✅ | `.rs` |
-| Swift | ❌ | ✅（`lang-all` 或 `lang-swift`） | ✅ | `.swift` |
+| TypeScript | ❌ | ✅（手动安装 `lang-typescript`） | ✅ | `.ts`, `.tsx` |
+| Kotlin | ❌ | ✅（手动安装 `lang-kotlin`） | ✅ | `.kt` |
+| C# | ❌ | ✅（默认推荐 `lang-csharp`） | ✅ | `.cs`, `.csx` |
+| C++ | ❌ | ✅（手动安装 `lang-cpp`） | ✅ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | ❌ | ✅（手动安装 `lang-java`） | ✅ | `.java` |
+| Ruby | ❌ | ✅（手动安装 `lang-ruby`） | ✅ | `.rb` |
+| C | ❌ | ✅（手动安装 `lang-c`） | ✅ | `.c`, `.h` |
+| PHP | ❌ | ✅（手动安装 `lang-php`） | ✅ | `.php` |
+| Rust | ❌ | ✅（手动安装 `lang-rust`） | ✅ | `.rs` |
+| Swift | ❌ | ✅（手动安装 `lang-swift`） | ✅ | `.swift` |
 | Dart | ❌ | ❌（当前无插件） | ✅ | `.dart` |
 
 C# Import 解析支持 `using`、`using static`、`global using`、别名导入，
 并兼容 `global::` 与 `@` 标识符写法。
+
+> 补充：`lang-all` 仍可作为聚合插件包手动安装，但由于部分上游 grammar peer 版本尚未完全收敛，它不再作为默认推荐安装链。
 
 ## 🔄 工作流程
 

@@ -11,15 +11,15 @@ import {
   discoverPluginPackages,
 } from '../../src/chunking/runtime/PluginLoader.js';
 
-test('默认插件候选顺序应为 all → 单语言 → legacy', () => {
-  assert.equal(DEFAULT_PLUGIN_CANDIDATES[0], '@alistar.max/contextweaver-lang-all');
+test('默认插件候选应仅包含默认收敛插件，不再自动加载 legacy', () => {
+  assert.equal(DEFAULT_PLUGIN_CANDIDATES[0], '@alistar.max/contextweaver-lang-csharp');
   assert.deepEqual(
     DEFAULT_PLUGIN_CANDIDATES.slice(0, CORE_PLUGIN_CANDIDATES.length),
     CORE_PLUGIN_CANDIDATES,
   );
-  assert.deepEqual(
-    DEFAULT_PLUGIN_CANDIDATES.slice(DEFAULT_PLUGIN_CANDIDATES.length - LEGACY_PLUGIN_CANDIDATES.length),
-    LEGACY_PLUGIN_CANDIDATES,
+  assert.equal(
+    DEFAULT_PLUGIN_CANDIDATES.some((candidate) => LEGACY_PLUGIN_CANDIDATES.includes(candidate)),
+    false,
   );
 });
 
