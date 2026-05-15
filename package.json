@@ -1,6 +1,6 @@
 {
   "name": "@alistar.max/contextweaver",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A context weaving tool for LLMs",
   "license": "MIT",
   "author": "alistar.max",
