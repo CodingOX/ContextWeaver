@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { ensureFeedbackTables } from '../search/feedbackLoop.js';
 import {
   batchDeleteFileFts,
   batchUpsertFileFts,
@@ -83,6 +84,7 @@ export function initDb(projectId: string): Database.Database {
 
   const dbPath = path.join(projectDir, 'index.db');
   const db = new Database(dbPath);
+  db.pragma('busy_timeout = 5000');
   db.pragma('journal_mode = WAL');
 
   // 创建 files 表
@@ -109,6 +111,7 @@ export function initDb(projectId: string): Database.Database {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);
     CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);
+    CREATE INDEX IF NOT EXISTS idx_files_language ON files(language);
   `);
 
   // 创建 metadata 表（存储项目级配置）
@@ -122,6 +125,9 @@ export function initDb(projectId: string): Database.Database {
   // 初始化 FTS 表（词法搜索支持）
   initFilesFts(db);
   initChunksFts(db);
+
+  // 初始化检索反馈闭环表（P4）
+  ensureFeedbackTables(db);
 
   return db;
 }

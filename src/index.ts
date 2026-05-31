@@ -8,9 +8,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cac from 'cac';
 import { generateProjectId } from './db/index.js';
-import { formatSearchText } from './app/formatSearchText.js';
-import { MissingEnvError, searchCodebase } from './app/searchCodebase.js';
 import { type ScanStats, scan } from './scanner/index.js';
+import {
+  inspectChunkIndexConsistency,
+  repairChunkIndexConsistency,
+} from './search/chunkIndexConsistency.js';
 import { logger } from './utils/logger.js';
 
 // 读取 package.json 获取版本号
@@ -59,14 +61,20 @@ cli.command('init', '初始化 ContextWeaver 配置').action(async () => {
   const defaultEnvContent = `# ContextWeaver 示例环境变量配置文件
 
 # Embedding API 配置（必需）
-EMBEDDINGS_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+EMBEDDINGS_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# EMBEDDINGS_API_KEY=your-api-key-here
 EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
 EMBEDDINGS_MODEL=BAAI/bge-m3
 EMBEDDINGS_MAX_CONCURRENCY=10
 EMBEDDINGS_DIMENSIONS=1024
 
 # Reranker 配置（必需）
-RERANK_API_KEY=your-api-key-here
+# 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
+RERANK_API_KEYS=your-api-key-here
+# 单 key 兼容写法（同时配置时 KEYS 优先）
+# RERANK_API_KEY=your-api-key-here
 RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
 RERANK_MODEL=BAAI/bge-reranker-v2-m3
 RERANK_TOP_N=20
@@ -105,20 +113,28 @@ cli
     const startTime = Date.now();
 
     try {
+      const { withLock } = await import('./utils/lock.js');
+
       // 进度日志节流：只在 30%、60%、90% 时输出（100% 由扫描完成日志代替）
       let lastLoggedPercent = 0;
-      const stats: ScanStats = await scan(rootPath, {
-        force: options.force,
-        onProgress: (current, total, message) => {
-          if (total !== undefined) {
-            const percent = Math.floor((current / total) * 100);
-            if (percent >= lastLoggedPercent + 30 && percent < 100) {
-              logger.info(`索引进度: ${percent}% - ${message || ''}`);
-              lastLoggedPercent = Math.floor(percent / 30) * 30;
-            }
-          }
-        },
-      });
+      const stats: ScanStats = await withLock(
+        projectId,
+        'index',
+        async () =>
+          scan(rootPath, {
+            force: options.force,
+            onProgress: (current, total, message) => {
+              if (total !== undefined) {
+                const percent = Math.floor((current / total) * 100);
+                if (percent >= lastLoggedPercent + 30 && percent < 100) {
+                  logger.info(`索引进度: ${percent}% - ${message || ''}`);
+                  lastLoggedPercent = Math.floor(percent / 30) * 30;
+                }
+              }
+            },
+          }),
+        10 * 60 * 1000,
+      );
 
       process.stdout.write('\n');
 
@@ -149,130 +165,203 @@ cli.command('mcp', '启动 MCP 服务器').action(async () => {
   }
 });
 
-export interface SearchCommandOptions {
-  repoPath?: string;
-  query?: string;
-  informationRequest?: string;
-  technicalTerms?: string;
-  zen?: boolean;
-  json?: boolean;
-  codeOnly?: boolean;
-}
-
-export interface SearchCommandDependencies {
-  search?: typeof searchCodebase;
-  write?: (text: string) => void;
-}
-
-function buildJsonErrorPayload(
-  query: string,
-  error: { name: string; message: string; missingVars: string[] },
-): string {
-  return JSON.stringify({
-    version: pkg.version,
-    success: false,
-    query,
-    error: {
-      name: error.name,
-      message: error.message,
-      missingVars: error.missingVars,
-    },
-  });
-}
-
-export async function runSearchCommand(
-  options: SearchCommandOptions,
-  deps: SearchCommandDependencies = {},
-): Promise<string> {
-  const repoPath = options.repoPath ? path.resolve(options.repoPath) : process.cwd();
-  const informationRequest = options.query || options.informationRequest;
-  if (!informationRequest) {
-    throw new Error('缺少 --query 或 --information-request');
-  }
-
-  const technicalTerms = (options.technicalTerms || '')
-    .split(',')
-    .map((term) => term.trim())
-    .filter(Boolean);
-  const searchQuery = [informationRequest, ...technicalTerms].filter(Boolean).join(' ');
-
-  const useZen = options.zen !== false;
-  const search = deps.search ?? searchCodebase;
-  const write = deps.write ?? ((text: string) => process.stdout.write(`${text}\n`));
-
-  try {
-    const result = await search({
-      repoPath,
-      query: searchQuery,
-      configOverride: useZen ? undefined : {},
-      codeOnly: options.codeOnly,
-    });
-
-    if (options.json) {
-      // JSON 模式只输出计划要求的稳定字段，便于脚本消费。
-      const jsonText = JSON.stringify({
-        version: pkg.version,
-        success: true,
-        projectId: result.projectId,
-        query: result.query,
-        seeds: result.contextPack.seeds,
-        expanded: result.contextPack.expanded,
-        files: result.contextPack.files,
-      });
-      write(jsonText);
-      return jsonText;
-    }
-
-    const text = formatSearchText(result.contextPack);
-    write(text);
-    return text;
-  } catch (error) {
-    if (error instanceof MissingEnvError) {
-      if (options.json) {
-        const jsonText = buildJsonErrorPayload(searchQuery, {
-          name: error.name,
-          message: error.message,
-          missingVars: error.missingVars,
-        });
-        write(jsonText);
-        return jsonText;
-      }
-
-      const { formatEnvMissingResponse } = await import('./mcp/tools/codebaseRetrieval.js');
-      const text = formatEnvMissingResponse(error.missingVars).content[0]?.text ?? '';
-      write(text);
-      return text;
-    }
-
-    throw error;
-  }
-}
-
 cli
   .command('search', '本地检索（参数对齐 MCP）')
   .option('--repo-path <path>', '代码库根目录（默认当前目录）')
-  .option('--query <text>', '自然语言问题描述（首选）')
   .option('--information-request <text>', '自然语言问题描述（必填）')
   .option('--technical-terms <terms>', '精确术语（逗号分隔）')
   .option('--zen', '使用 MCP Zen 配置（默认开启）')
-  .option('--json', '输出 JSON 结果')
-  .option('--code-only', '搜索阶段排除文档类结果，只返回源码相关结果')
-  .action(async (options: SearchCommandOptions) => {
-    if (!options.query && !options.informationRequest) {
-      logger.error('缺少 --query 或 --information-request');
-      process.exit(1);
-    }
+  .action(
+    async (options: {
+      repoPath?: string;
+      informationRequest?: string;
+      technicalTerms?: string;
+      zen?: boolean;
+    }) => {
+      const repoPath = options.repoPath ? path.resolve(options.repoPath) : process.cwd();
+      const informationRequest = options.informationRequest;
+      if (!informationRequest) {
+        logger.error('缺少 --information-request');
+        process.exit(1);
+      }
+
+      const technicalTerms = (options.technicalTerms || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      const useZen = options.zen !== false;
+
+      const { handleCodebaseRetrieval } = await import('./mcp/tools/codebaseRetrieval.js');
+
+      const response = await handleCodebaseRetrieval(
+        {
+          repo_path: repoPath,
+          information_request: informationRequest,
+          technical_terms: technicalTerms.length > 0 ? technicalTerms : undefined,
+        },
+        useZen ? undefined : {},
+      );
+
+      const text = response.content.map((item) => item.text).join('\n');
+      process.stdout.write(`${text}\n`);
+    },
+  );
+
+
+cli
+  .command('tune <dataset>', '离线自动调参（RRF 回放）')
+  .option('--target <metric>', '优化目标（mrr / recall@k / ndcg@k）', { default: 'mrr' })
+  .option('--k <values>', '指标 K 列表（逗号分隔）', { default: '1,3,5' })
+  .option('--top <n>', '输出前 N 组候选', { default: '5' })
+  .option('--grid <json>', '参数网格 JSON（可选）')
+  .action(
+    async (
+      dataset: string,
+      options: {
+        target?: string;
+        k?: string;
+        top?: string;
+        grid?: string;
+      },
+    ) => {
+      try {
+        const { loadAutoTuneDataset } = await import('./search/eval/autoTuneDataset.js');
+        const { runAutoTune } = await import('./search/eval/autoTune.js');
+
+        const kValues = (options.k || '1,3,5')
+          .split(',')
+          .map((token) => Number(token.trim()))
+          .filter((value) => Number.isFinite(value) && value > 0)
+          .map((value) => Math.floor(value));
+
+        if (kValues.length === 0) {
+          throw new Error('--k 参数无效，应为正整数列表（如 1,3,5）');
+        }
+
+        let parsedGrid: unknown;
+        if (options.grid) {
+          parsedGrid = JSON.parse(options.grid);
+        }
+
+        const cases = await loadAutoTuneDataset(dataset);
+        const result = runAutoTune(cases, {
+          target: options.target || 'mrr',
+          kValues,
+          topN: Number(options.top || '5'),
+          grid:
+            parsedGrid && typeof parsedGrid === 'object' && !Array.isArray(parsedGrid)
+              ? (parsedGrid as { wVec?: number[]; rrfK0?: number[]; fusedTopM?: number[] })
+              : undefined,
+        });
+
+        logger.info(`自动调参完成: candidates=${result.totalCandidates}, target=${result.target}`);
+        logger.info(
+          `最佳参数: wVec=${result.best.config.wVec}, wLex=${result.best.config.wLex}, rrfK0=${result.best.config.rrfK0}, fusedTopM=${result.best.config.fusedTopM}, score=${result.best.targetScore.toFixed(6)}`,
+        );
+
+        process.stdout.write('=== Auto Tune Leaderboard ===\n');
+        result.leaderboard.forEach((item, index) => {
+          process.stdout.write(
+            `${index + 1}. score=${item.targetScore.toFixed(6)} | wVec=${item.config.wVec}, wLex=${item.config.wLex}, rrfK0=${item.config.rrfK0}, fusedTopM=${item.config.fusedTopM}\n`,
+          );
+        });
+      } catch (err) {
+        const error = err as { message?: string; stack?: string };
+        logger.error({ err, stack: error.stack }, `自动调参失败: ${error.message}`);
+        process.exit(1);
+      }
+    },
+  );
+
+
+cli
+  .command('feedback [path]', '查看检索隐式反馈闭环摘要')
+  .option('--days <n>', '统计最近 N 天（默认 7）', { default: '7' })
+  .option('--top <n>', '展示前 N 个高复用文件（默认 10）', { default: '10' })
+  .action(async (targetPath: string | undefined, options: { days?: string; top?: string }) => {
+    const rootPath = targetPath ? path.resolve(targetPath) : process.cwd();
+    const projectId = generateProjectId(rootPath);
+
+    const days = Math.max(1, Math.floor(Number(options.days || '7')));
+    const top = Math.max(1, Math.floor(Number(options.top || '10')));
 
     try {
-      await runSearchCommand(options);
+      const { initDb } = await import('./db/index.js');
+      const { getFeedbackSummary } = await import('./search/feedbackLoop.js');
+
+      const db = initDb(projectId);
+      try {
+        const summary = getFeedbackSummary(db, { days, top });
+
+        logger.info(
+          `反馈摘要: events=${summary.totalEvents}, zeroHitRate=${summary.zeroHitRate.toFixed(4)}, implicitSuccessRate=${summary.implicitSuccessRate.toFixed(4)}, positiveSignals=${summary.positiveSignals}, negativeSignals=${summary.negativeSignals}`,
+        );
+
+        process.stdout.write('=== Retrieval Feedback Summary ===\n');
+        process.stdout.write(`projectId: ${projectId}\n`);
+        process.stdout.write(`days: ${days}\n`);
+        process.stdout.write(`totalEvents: ${summary.totalEvents}\n`);
+        process.stdout.write(`zeroHitRate: ${summary.zeroHitRate.toFixed(6)}\n`);
+        process.stdout.write(`implicitSuccessRate: ${summary.implicitSuccessRate.toFixed(6)}\n`);
+        process.stdout.write(`positiveSignals: ${summary.positiveSignals}\n`);
+        process.stdout.write(`negativeSignals: ${summary.negativeSignals}\n`);
+
+        if (summary.topFiles.length > 0) {
+          process.stdout.write('--- topFiles ---\n');
+          summary.topFiles.forEach((item, index) => {
+            process.stdout.write(
+              `${index + 1}. ${item.filePath} | hits=${item.hitCount} | weight=${item.totalWeight.toFixed(4)}\n`,
+            );
+          });
+        }
+      } finally {
+        db.close();
+      }
     } catch (err) {
       const error = err as { message?: string; stack?: string };
-      logger.error({ err, stack: error.stack }, `搜索失败: ${error.message}`);
+      logger.error({ err, stack: error.stack }, `反馈摘要查询失败: ${error.message}`);
       process.exit(1);
     }
   });
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  cli.help();
-  cli.parse();
-}
+cli
+  .command('doctor [path]', '检查向量索引与 chunks_fts 一致性')
+  .option('--repair', '删除 chunks_fts 中无对应向量的孤儿记录')
+  .action(async (targetPath: string | undefined, options: { repair?: boolean }) => {
+    const rootPath = targetPath ? path.resolve(targetPath) : process.cwd();
+    const projectId = generateProjectId(rootPath);
+
+    logger.info(`开始一致性检查: ${rootPath}`);
+    logger.info(`项目 ID: ${projectId}`);
+
+    try {
+      const report = await inspectChunkIndexConsistency(projectId);
+
+      logger.info(
+        `一致性报告: vector=${report.vectorCount}, chunks_fts=${report.ftsCount}, missingInFts=${report.missingInFts.length}, missingInVector=${report.missingInVector.length}`,
+      );
+
+      if (report.missingInFts.length > 0) {
+        logger.warn(
+          `检测到 ${report.missingInFts.length} 条向量记录未进入 chunks_fts（建议执行 contextweaver index --force 或增量索引）`,
+        );
+      }
+
+      if (report.missingInVector.length > 0) {
+        logger.warn(`检测到 ${report.missingInVector.length} 条 chunks_fts 孤儿记录`);
+      }
+
+      if (options.repair) {
+        const fix = await repairChunkIndexConsistency(projectId);
+        logger.info(`修复完成: 已删除 ${fix.removedFromFts} 条 chunks_fts 孤儿记录`);
+      }
+    } catch (err) {
+      const error = err as { message?: string; stack?: string };
+      logger.error({ err, stack: error.stack }, `一致性检查失败: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+cli.help();
+cli.parse();

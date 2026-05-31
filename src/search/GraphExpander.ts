@@ -12,7 +12,6 @@ import { getEmbeddingConfig } from '../config.js';
 import { initDb } from '../db/index.js';
 import { logger } from '../utils/logger.js';
 import { type ChunkRecord, getVectorStore, type VectorStore } from '../vectorStore/index.js';
-import { matchesSearchFilter, type SearchFilter } from './filtering.js';
 import { createResolvers, type ImportResolver } from './resolvers/index.js';
 import type { ScoredChunk, SearchConfig } from './types.js';
 
@@ -84,11 +83,7 @@ export class GraphExpander {
   /**
    * 扩展 seed chunks
    */
-  async expand(
-    seeds: ScoredChunk[],
-    queryTokens?: Set<string>,
-    filter?: SearchFilter,
-  ): Promise<ExpandResult> {
+  async expand(seeds: ScoredChunk[], queryTokens?: Set<string>): Promise<ExpandResult> {
     if (!this.vectorStore || !this.db) {
       await this.init();
     }
@@ -115,24 +110,18 @@ export class GraphExpander {
     const seedsByFile = this.groupByFile(seeds);
 
     // E1: 同文件邻居扩展
-    const neighborChunks = await this.expandNeighbors(seedsByFile, existingKeys, filter);
-    this.addChunks(neighborChunks, expandedChunks, existingKeys, filter);
+    const neighborChunks = await this.expandNeighbors(seedsByFile, existingKeys);
+    this.addChunks(neighborChunks, expandedChunks, existingKeys);
     stats.neighborCount = neighborChunks.length;
 
     // E2: breadcrumb 补段
-    const breadcrumbChunks = await this.expandBreadcrumb(seeds, existingKeys, filter);
-    this.addChunks(breadcrumbChunks, expandedChunks, existingKeys, filter);
+    const breadcrumbChunks = await this.expandBreadcrumb(seeds, existingKeys);
+    this.addChunks(breadcrumbChunks, expandedChunks, existingKeys);
     stats.breadcrumbCount = breadcrumbChunks.length;
 
     // E3: 跨文件引用解析（多语言支持）
-    const importChunks = await this.expandImports(
-      seeds,
-      existingKeys,
-      queryTokens,
-      stats,
-      filter,
-    );
-    this.addChunks(importChunks, expandedChunks, existingKeys, filter);
+    const importChunks = await this.expandImports(seeds, existingKeys, queryTokens, stats);
+    this.addChunks(importChunks, expandedChunks, existingKeys);
     stats.importCount = importChunks.length;
 
     logger.debug(stats, '上下文扩展完成');
@@ -143,21 +132,8 @@ export class GraphExpander {
   /**
    * 添加 chunks 并更新去重集合
    */
-  private addChunks(
-    newChunks: ScoredChunk[],
-    target: ScoredChunk[],
-    keys: Set<string>,
-    filter?: SearchFilter,
-  ): void {
+  private addChunks(newChunks: ScoredChunk[], target: ScoredChunk[], keys: Set<string>): void {
     for (const chunk of newChunks) {
-      if (
-        !matchesSearchFilter(filter, {
-          filePath: chunk.filePath,
-          language: chunk.record.language,
-        })
-      ) {
-        continue;
-      }
       const key = this.getChunkKey(chunk);
       if (!keys.has(key)) {
         keys.add(key);
@@ -178,7 +154,6 @@ export class GraphExpander {
   private async expandNeighbors(
     seedsByFile: Map<string, ScoredChunk[]>,
     existingKeys: Set<string>,
-    filter?: SearchFilter,
   ): Promise<ScoredChunk[]> {
     const result: ScoredChunk[] = [];
     const { neighborHops, decayNeighbor } = this.config;
@@ -219,14 +194,6 @@ export class GraphExpander {
         if (!chunk) continue;
         const key = `${filePath}#${neighborIndex}`;
         if (existingKeys.has(key)) continue;
-        if (
-          !matchesSearchFilter(filter, {
-            filePath: chunk.file_path,
-            language: chunk.language,
-          })
-        ) {
-          continue;
-        }
 
         // 找到最近的 seed 及其距离
         let minDistance = Infinity;
@@ -271,7 +238,6 @@ export class GraphExpander {
   private async expandBreadcrumb(
     seeds: ScoredChunk[],
     existingKeys: Set<string>,
-    filter?: SearchFilter,
   ): Promise<ScoredChunk[]> {
     const result: ScoredChunk[] = [];
     const { breadcrumbExpandLimit, decayBreadcrumb } = this.config;
@@ -313,12 +279,6 @@ export class GraphExpander {
       const newChunks = matchingChunks
         .filter((chunk) => !seedIndices.has(chunk.chunk_index))
         .filter((chunk) => !existingKeys.has(`${filePath}#${chunk.chunk_index}`))
-        .filter((chunk) =>
-          matchesSearchFilter(filter, {
-            filePath: chunk.file_path,
-            language: chunk.language,
-          }),
-        )
         .slice(0, breadcrumbExpandLimit);
 
       // 计算衰减分数
@@ -366,7 +326,6 @@ export class GraphExpander {
     existingKeys: Set<string>,
     queryTokens?: Set<string>,
     stats?: ExpandResult['stats'],
-    filter?: SearchFilter,
   ): Promise<ScoredChunk[]> {
     const result: ScoredChunk[] = [];
     const { importFilesPerSeed, chunksPerImportFile, decayImport, decayDepth } = this.config;
@@ -421,16 +380,9 @@ export class GraphExpander {
 
         const importChunks = await this.vectorStore?.getFileChunks(targetPath);
         if (!importChunks || importChunks.length === 0) continue;
-        const allowedImportChunks = importChunks.filter((chunk) =>
-          matchesSearchFilter(filter, {
-            filePath: chunk.file_path,
-            language: chunk.language,
-          }),
-        );
-        if (allowedImportChunks.length === 0) continue;
 
         const selectedChunks = this.selectImportChunks(
-          allowedImportChunks,
+          importChunks,
           chunksPerImportFile,
           queryTokens,
         );

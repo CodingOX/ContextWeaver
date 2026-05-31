@@ -15,6 +15,7 @@ import { batchUpdateVectorIndexHash, clearVectorIndexHash } from '../db/index.js
 import type { ProcessResult } from '../scanner/processor.js';
 import {
   batchDeleteFileChunksFts,
+  type ChunkFtsDoc,
   batchUpsertChunkFts,
   isChunksFtsInitialized,
 } from '../search/fts.js';
@@ -40,6 +41,94 @@ interface FileToIndex {
   chunks: ProcessedChunk[];
 }
 
+export interface ChunkFtsDocInput {
+  chunkId: string;
+  filePath: string;
+  chunkIndex: number;
+  breadcrumb: string;
+  displayCode: string;
+  language?: string;
+}
+
+const CODE_IDENTIFIER_REGEX = /[A-Za-z_][A-Za-z0-9_]*/g;
+const BLOCK_COMMENT_REGEX = /\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT_REGEX = /\/\/.*$/gm;
+const HASH_COMMENT_REGEX = /(^|\s)#.*$/gm;
+
+function toSnakeCase(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
+}
+
+function toCamelCase(value: string): string {
+  return value.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function expandSymbolToken(token: string): string[] {
+  const variants = new Set<string>();
+  variants.add(token);
+  variants.add(token.toLowerCase());
+
+  if (/[a-z][A-Z]/.test(token)) {
+    variants.add(toSnakeCase(token));
+  }
+
+  if (token.includes('_')) {
+    variants.add(toCamelCase(token));
+  }
+
+  return Array.from(variants).filter(Boolean);
+}
+
+function collectSymbolTokens(text: string): string[] {
+  const tokens = new Set<string>();
+
+  for (const match of text.matchAll(CODE_IDENTIFIER_REGEX)) {
+    const raw = match[0];
+    for (const variant of expandSymbolToken(raw)) {
+      tokens.add(variant);
+    }
+  }
+
+  return Array.from(tokens);
+}
+
+export function buildChunkFtsDoc(input: ChunkFtsDocInput): ChunkFtsDoc {
+  const comments: string[] = [];
+
+  let body = input.displayCode;
+  body = body.replace(BLOCK_COMMENT_REGEX, (comment) => {
+    comments.push(comment);
+    return '\n';
+  });
+  body = body.replace(LINE_COMMENT_REGEX, (comment) => {
+    comments.push(comment);
+    return '';
+  });
+
+  // Python/Ruby/Shell 等常见 # 注释（避免误伤 URL，要求 # 前面是空白或行首）
+  body = body.replace(HASH_COMMENT_REGEX, (_full, prefix: string) => {
+    const comment = _full.slice(prefix.length);
+    comments.push(comment);
+    return prefix;
+  });
+
+  const normalizedBody = body.trim() || input.displayCode.trim();
+  const symbolTokens = collectSymbolTokens(`${input.breadcrumb}\n${input.displayCode}`).join(' ');
+
+  return {
+    chunkId: input.chunkId,
+    filePath: input.filePath,
+    chunkIndex: input.chunkIndex,
+    symbolTokens,
+    breadcrumb: input.breadcrumb,
+    body: normalizedBody,
+    comments: comments.join('\n').trim(),
+  };
+}
+
 // ===========================================
 // Indexer 类
 // ===========================================
@@ -47,13 +136,12 @@ interface FileToIndex {
 export class Indexer {
   private projectId: string;
   private vectorStore: VectorStore | null = null;
-  private embeddingClient: EmbeddingClient;
+  private embeddingClient: EmbeddingClient | null = null;
   private vectorDim: number;
 
   constructor(projectId: string, vectorDim = 1024) {
     this.projectId = projectId;
     this.vectorDim = vectorDim;
-    this.embeddingClient = getEmbeddingClient();
   }
 
   /**
@@ -61,6 +149,18 @@ export class Indexer {
    */
   async init(): Promise<void> {
     this.vectorStore = await getVectorStore(this.projectId, this.vectorDim);
+  }
+
+  /**
+   * Embedding 客户端改为惰性初始化。
+   *
+   * 这样无 chunk 文件的收敛路径不会因为没有真实 embedding 配置而提前失败。
+   */
+  private getOrCreateEmbeddingClient(): EmbeddingClient {
+    if (!this.embeddingClient) {
+      this.embeddingClient = getEmbeddingClient();
+    }
+    return this.embeddingClient;
   }
 
   /**
@@ -89,6 +189,7 @@ export class Indexer {
     // 分类处理结果
     const toIndex: FileToIndex[] = [];
     const toDelete: string[] = [];
+    const noChunkSettled: Array<{ path: string; hash: string }> = [];
 
     for (const result of results) {
       switch (result.status) {
@@ -101,8 +202,15 @@ export class Indexer {
               chunks: result.chunks,
             });
           } else {
-            // chunks 为空（解析失败或空文件），清除向量但不标记为错误
-            toDelete.push(result.relPath);
+            // chunks 为空（解析失败或空文件）
+            // 仅 modified 文件可能有旧向量记录需要清除，added 文件从未存在过向量记录
+            if (result.status === 'modified') {
+              toDelete.push(result.relPath);
+            }
+            noChunkSettled.push({
+              path: result.relPath,
+              hash: result.hash,
+            });
             stats.skipped++;
           }
           break;
@@ -128,6 +236,16 @@ export class Indexer {
       stats.deleted = toDelete.length;
     }
 
+    // chunks 为空的文件视为已收敛：标记 vector_index_hash=hash
+    // 避免这些文件在下一轮被持续判定为“需要自愈”
+    if (noChunkSettled.length > 0) {
+      batchUpdateVectorIndexHash(db, noChunkSettled);
+      logger.debug(
+        { count: noChunkSettled.length },
+        '无可索引 chunk，标记向量索引状态为已收敛',
+      );
+    }
+
     // 批量处理需要索引的文件
     if (toIndex.length > 0) {
       const indexResult = await this.batchIndex(db, toIndex, onProgress);
@@ -138,7 +256,7 @@ export class Indexer {
     logger.info(
       {
         indexed: stats.indexed,
-        deleted: stats.deleted,
+        vectorRecordsDeleted: stats.deleted,
         errors: stats.errors,
         skipped: stats.skipped,
       },
@@ -190,7 +308,7 @@ export class Indexer {
     let embeddings: number[][];
     try {
       // 传递进度回调给 embedBatch，让它在每个 API 批次完成时报告进度
-      const results = await this.embeddingClient.embedBatch(allTexts, 20, onProgress);
+      const results = await this.getOrCreateEmbeddingClient().embedBatch(allTexts, 20, onProgress);
       embeddings = results.map((r) => r.embedding);
     } catch (err) {
       const error = err as { message?: string; stack?: string };
@@ -204,13 +322,7 @@ export class Indexer {
 
     // ===== 阶段 3: 组装所有 ChunkRecords =====
     const filesToUpsert: Array<{ path: string; hash: string; records: ChunkRecord[] }> = [];
-    const allFtsChunks: Array<{
-      chunkId: string;
-      filePath: string;
-      chunkIndex: number;
-      breadcrumb: string;
-      content: string;
-    }> = [];
+    const allFtsChunks: ChunkFtsDoc[] = [];
     const successFiles: Array<{ path: string; hash: string }> = [];
     const errorFiles: string[] = [];
 
@@ -249,13 +361,15 @@ export class Indexer {
           records.push(record);
 
           // 收集 FTS 数据
-          allFtsChunks.push({
-            chunkId: record.chunk_id,
-            filePath: record.file_path,
-            chunkIndex: record.chunk_index,
-            breadcrumb: record.breadcrumb,
-            content: `${record.breadcrumb}\n${record.display_code}`,
-          });
+          allFtsChunks.push(
+            buildChunkFtsDoc({
+              chunkId: record.chunk_id,
+              filePath: record.file_path,
+              chunkIndex: record.chunk_index,
+              breadcrumb: record.breadcrumb,
+              displayCode: record.display_code,
+            }),
+          );
         }
 
         filesToUpsert.push({ path: file.path, hash: file.hash, records });
@@ -350,7 +464,7 @@ export class Indexer {
    * 文本搜索（先 embedding 再向量搜索）
    */
   async textSearch(query: string, limit = 10, filter?: string) {
-    const queryVector = await this.embeddingClient.embed(query);
+    const queryVector = await this.getOrCreateEmbeddingClient().embed(query);
     return this.search(queryVector, limit, filter);
   }
 

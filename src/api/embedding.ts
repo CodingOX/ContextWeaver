@@ -69,6 +69,8 @@ class ProgressTracker {
   private onProgress?: (completed: number, total: number) => void;
   /** 是否跳过日志（单批次时跳过，避免与索引日志混淆） */
   private readonly skipLogs: boolean;
+  /** 取消标记：为 true 后 recordBatch/logProgress 变为 no-op */
+  private cancelled = false;
 
   constructor(total: number, onProgress?: (completed: number, total: number) => void) {
     this.total = total;
@@ -78,8 +80,15 @@ class ProgressTracker {
     this.skipLogs = total <= 1;
   }
 
+  /** 取消追踪，后续 recordBatch 和 logProgress 变为 no-op */
+  cancel(): void {
+    this.cancelled = true;
+  }
+
   /** 记录一个批次完成 */
   recordBatch(tokens: number): void {
+    if (this.cancelled) return;
+
     this.completed++;
     this.totalTokens += tokens;
 
@@ -93,9 +102,19 @@ class ProgressTracker {
     }
   }
 
+  /**
+   * 扩展总批次数（用于 413 拆分重试时修正进度）
+   */
+  expandTotal(extraBatches: number): void {
+    if (extraBatches <= 0) {
+      return;
+    }
+    this.total += extraBatches;
+  }
+
   /** 输出进度 */
   private logProgress(): void {
-    if (this.skipLogs) return;
+    if (this.skipLogs || this.cancelled) return;
 
     const elapsed = (Date.now() - this.startTime) / 1000;
     const percent = Math.round((this.completed / this.total) * 100);
@@ -254,7 +273,7 @@ class RateLimitController {
     );
 
     // 创建暂停 Promise
-    let resumeResolve: () => void = () => { };
+    let resumeResolve: () => void = () => {};
     this.pausePromise = new Promise<void>((resolve) => {
       resumeResolve = resolve;
     });
@@ -312,10 +331,37 @@ function getRateLimitController(maxConcurrency: number): RateLimitController {
 export class EmbeddingClient {
   private config: EmbeddingConfig;
   private rateLimiter: RateLimitController;
+  private readonly apiKeyPool: string[];
+  private nextApiKeyIndex = 0;
 
   constructor(config?: EmbeddingConfig) {
     this.config = config || getEmbeddingConfig();
     this.rateLimiter = getRateLimitController(this.config.maxConcurrency);
+    this.apiKeyPool = this.buildApiKeyPool();
+  }
+
+  /**
+   * 构建 API Key 池：优先使用 apiKeys，缺失时回退到 apiKey
+   */
+  private buildApiKeyPool(): string[] {
+    const configuredKeys = Array.isArray(this.config.apiKeys)
+      ? this.config.apiKeys.map((key) => key?.trim()).filter((key): key is string => Boolean(key))
+      : [];
+
+    if (configuredKeys.length > 0) {
+      return configuredKeys;
+    }
+
+    return [this.config.apiKey];
+  }
+
+  /**
+   * 获取下一个用于请求的 API Key（轮询）
+   */
+  private getNextApiKey(): string {
+    const key = this.apiKeyPool[this.nextApiKeyIndex];
+    this.nextApiKeyIndex = (this.nextApiKeyIndex + 1) % this.apiKeyPool.length;
+    return key;
   }
 
   /**
@@ -349,19 +395,26 @@ export class EmbeddingClient {
 
     // 创建进度追踪器（传入外部回调）
     const progress = new ProgressTracker(batches.length, onProgress);
+    const controller = new AbortController();
 
-    // 使用速率限制控制器处理各批次
-    const batchResults = await Promise.all(
-      batches.map((batch, batchIndex) =>
-        this.processWithRateLimit(batch, batchIndex * batchSize, progress),
-      ),
-    );
+    try {
+      // 使用速率限制控制器处理各批次
+      const batchResults = await Promise.all(
+        batches.map((batch, batchIndex) =>
+          this.processWithRateLimit(batch, batchIndex * batchSize, progress, controller.signal),
+        ),
+      );
 
-    // 输出完成统计
-    progress.complete();
+      // 输出完成统计
+      progress.complete();
 
-    // 扁平化结果
-    return batchResults.flat();
+      // 扁平化结果
+      return batchResults.flat();
+    } catch (err) {
+      controller.abort();
+      progress.cancel();
+      throw err;
+    }
   }
 
   /**
@@ -372,6 +425,7 @@ export class EmbeddingClient {
     texts: string[],
     startIndex: number,
     progress: ProgressTracker,
+    signal?: AbortSignal,
   ): Promise<EmbeddingResult[]> {
     const MAX_NETWORK_RETRIES = 3;
     const INITIAL_RETRY_DELAY_MS = 1000;
@@ -379,18 +433,33 @@ export class EmbeddingClient {
     let networkRetries = 0;
 
     while (true) {
+      if (signal?.aborted) {
+        throw new Error('Embedding 批处理已中止');
+      }
+
       // 获取执行槽位（可能等待）
       await this.rateLimiter.acquire();
 
+      if (signal?.aborted) {
+        this.rateLimiter.releaseFailure();
+        throw new Error('Embedding 批处理已中止');
+      }
+
       try {
-        const result = await this.processBatch(texts, startIndex, progress);
+        const result = await this.processBatch(texts, startIndex, progress, signal);
         this.rateLimiter.releaseSuccess();
         return result;
       } catch (err) {
+        if (signal?.aborted) {
+          this.rateLimiter.releaseFailure();
+          throw new Error('Embedding 批处理已中止');
+        }
+
         const error = err as { message?: string; code?: string };
         const errorMessage = error.message || '';
         const isRateLimited = errorMessage.includes('429') || errorMessage.includes('rate');
         const isNetworkError = this.isNetworkError(err);
+        const isPayloadTooLarge = this.isPayloadTooLarge(err);
 
         if (isRateLimited) {
           // 429 错误：释放槽位，触发全局暂停
@@ -416,6 +485,40 @@ export class EmbeddingClient {
           this.rateLimiter.releaseForRetry();
           await sleep(delayMs);
           // 循环继续，重新获取槽位并重试
+        } else if (isPayloadTooLarge && texts.length > 1) {
+          // 413 错误：释放槽位后拆分批次并递归处理
+          this.rateLimiter.releaseForRetry();
+
+          const splitIndex = Math.ceil(texts.length / 2);
+          const leftTexts = texts.slice(0, splitIndex);
+          const rightTexts = texts.slice(splitIndex);
+
+          // 一个批次拆分为两个批次，总数 +1
+          progress.expandTotal(1);
+
+          logger.warn(
+            {
+              error: errorMessage,
+              batchSize: texts.length,
+              leftBatchSize: leftTexts.length,
+              rightBatchSize: rightTexts.length,
+            },
+            'Embedding 请求体过大，自动拆分批次重试',
+          );
+
+          const leftResults = await this.processWithRateLimit(
+            leftTexts,
+            startIndex,
+            progress,
+            signal,
+          );
+          const rightResults = await this.processWithRateLimit(
+            rightTexts,
+            startIndex + leftTexts.length,
+            progress,
+            signal,
+          );
+          return [...leftResults, ...rightResults];
         } else {
           // 其他错误或重试次数耗尽：抛出异常
           this.rateLimiter.releaseFailure();
@@ -442,7 +545,10 @@ export class EmbeddingClient {
    * - socket hang up: 套接字意外关闭
    */
   private isNetworkError(err: unknown): boolean {
-    const error = err as { message?: string; code?: string };
+    const error = err as { message?: string; code?: string; name?: string };
+    // AbortController 中止不是网络错误，不应重试
+    if (error.name === 'AbortError') return false;
+
     const message = (error.message || '').toLowerCase();
     const code = error.code || '';
 
@@ -475,13 +581,44 @@ export class EmbeddingClient {
   }
 
   /**
+   * 判断是否为请求体过大错误（HTTP 413）
+   */
+  private isPayloadTooLarge(err: unknown): boolean {
+    const error = err as { message?: string; code?: string };
+    const message = (error.message || '').toLowerCase();
+    const code = (error.code || '').toString().toLowerCase();
+
+    if (message.includes('413')) {
+      return true;
+    }
+
+    const payloadTooLargePatterns = [
+      'payload too large',
+      'request entity too large',
+      'content too large',
+      'entity too large',
+    ];
+
+    for (const pattern of payloadTooLargePatterns) {
+      if (message.includes(pattern)) {
+        return true;
+      }
+    }
+
+    return code === '413';
+  }
+
+  /**
    * 处理单个批次（单次请求，不含重试逻辑）
    */
   private async processBatch(
     texts: string[],
     startIndex: number,
     progress: ProgressTracker,
+    signal?: AbortSignal,
   ): Promise<EmbeddingResult[]> {
+    const apiKey = this.getNextApiKey();
+
     const requestBody: EmbeddingRequest = {
       model: this.config.model,
       input: texts,
@@ -492,9 +629,10 @@ export class EmbeddingClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     const data = (await response.json()) as EmbeddingResponse & EmbeddingErrorResponse;

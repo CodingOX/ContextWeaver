@@ -13,6 +13,7 @@ import { getRerankerClient } from '../api/reranker.js';
 import { getEmbeddingConfig } from '../config.js';
 import { initDb } from '../db/index.js';
 import { getIndexer, type Indexer } from '../indexer/index.js';
+import { getLanguage } from '../scanner/language.js';
 import { isDebugEnabled, logger } from '../utils/logger.js';
 import type { SearchResult as VectorSearchResult } from '../vectorStore/index.js';
 import { getVectorStore, type VectorStore } from '../vectorStore/index.js';
@@ -26,8 +27,62 @@ import {
   segmentQuery,
 } from './fts.js';
 import { getGraphExpander } from './GraphExpander.js';
-import { matchesSearchFilter, type SearchFilter } from './filtering.js';
-import type { ContextPack, ScoredChunk, SearchConfig } from './types.js';
+import type {
+  BuildContextPackOptions,
+  ContextPack,
+  QueryChannels,
+  ScoredChunk,
+  SearchConfig,
+} from './types.js';
+
+/**
+ * 将 languageFilter 转换为 LanceDB WHERE 子句
+ *
+ * @param languages 语言白名单数组
+ * @returns SQL WHERE 子句字符串，空数组或 undefined 返回 undefined
+ */
+export function buildLanguageWhereClause(languages?: string[]): string | undefined {
+  if (!languages || languages.length === 0) {
+    return undefined;
+  }
+
+  if (languages.length === 1) {
+    // 单语言: language = 'typescript'
+    return `language = '${languages[0]}'`;
+  }
+
+  // 多语言: language IN ('typescript', 'javascript', 'python')
+  const escapedLangs = languages.map((lang) => `'${lang}'`).join(', ');
+  return `language IN (${escapedLangs})`;
+}
+
+/**
+ * 在融合后、Rerank 前按文件施加候选上限
+ *
+ * 输入应保持降序；函数会按原顺序稳定筛选，确保高分 chunk 优先保留。
+ */
+export function applyPreRerankPerFileCap(
+  candidates: ScoredChunk[],
+  perFileCap: number,
+): ScoredChunk[] {
+  if (perFileCap <= 0 || !Number.isFinite(perFileCap)) {
+    return candidates;
+  }
+
+  const fileCounts = new Map<string, number>();
+  const capped: ScoredChunk[] = [];
+
+  for (const candidate of candidates) {
+    const current = fileCounts.get(candidate.filePath) ?? 0;
+    if (current >= perFileCap) {
+      continue;
+    }
+    fileCounts.set(candidate.filePath, current + 1);
+    capped.push(candidate);
+  }
+
+  return capped;
+}
 
 // ===========================================
 // 性能优化：Token 边界 RegExp 缓存
@@ -57,17 +112,10 @@ export class SearchService {
   private vectorStore: VectorStore | null = null;
   private db: Database.Database | null = null;
   private config: SearchConfig;
-  private filter?: SearchFilter;
 
-  constructor(
-    projectId: string,
-    _projectPath: string,
-    config?: Partial<SearchConfig>,
-    filter?: SearchFilter,
-  ) {
+  constructor(projectId: string, _projectPath: string, config?: Partial<SearchConfig>) {
     this.projectId = projectId;
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.filter = filter;
   }
 
   async init(): Promise<void> {
@@ -82,20 +130,52 @@ export class SearchService {
   /**
    * 构建上下文包（用于问答/生成）
    */
-  async buildContextPack(query: string): Promise<ContextPack> {
+  async buildContextPack(
+    query: string,
+    channels?: Partial<QueryChannels>,
+    options?: BuildContextPackOptions,
+  ): Promise<ContextPack> {
     const timingMs: Record<string, number> = {};
     let t0 = Date.now();
+    const filePathFilter = options?.filePathFilter;
+    const languageWhereClause = buildLanguageWhereClause(options?.languageFilter);
+
+    const vectorQuery = channels?.vectorQuery ?? query;
+    const lexicalQuery = channels?.lexicalQuery ?? query;
+    const rerankQuery = channels?.rerankQuery ?? query;
 
     // 1. 混合召回
-    const candidates = await this.hybridRetrieve(query);
+    const candidates = await this.hybridRetrieve(
+      vectorQuery,
+      lexicalQuery,
+      languageWhereClause,
+      options?.languageFilter,
+    );
+    const filteredCandidates = filePathFilter
+      ? candidates.filter((chunk) => filePathFilter(chunk.filePath))
+      : candidates;
     timingMs.retrieve = Date.now() - t0;
 
     // 2. 取 topM
     t0 = Date.now();
-    const topM = candidates.sort((a, b) => b.score - a.score).slice(0, this.config.fusedTopM);
+    const topM = filteredCandidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.config.fusedTopM);
+    const cappedTopM = applyPreRerankPerFileCap(topM, this.config.preRerankPerFileCap);
 
-    // 3. Rerank → seeds
-    const reranked = await this.rerank(query, topM);
+    // 3. Rerank → seeds（失败时降级到融合结果）
+    let reranked: ScoredChunk[];
+    try {
+      reranked = await this.rerank(rerankQuery, cappedTopM);
+    } catch (error) {
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Rerank 不可用，降级到 RRF 融合结果',
+      );
+      reranked = cappedTopM;
+    }
     timingMs.rerank = Date.now() - t0;
 
     // 4. Smart TopK Cutoff
@@ -107,18 +187,29 @@ export class SearchService {
     t0 = Date.now();
     const queryTokens = this.extractQueryTokens(query);
     const expanded = await this.expand(seeds, queryTokens);
+    let filteredExpanded = filePathFilter
+      ? expanded.filter((chunk) => filePathFilter(chunk.filePath))
+      : expanded;
+
+    const languageFilter = options?.languageFilter;
+    if (languageFilter && languageFilter.length > 0) {
+      const langSet = new Set(languageFilter);
+      filteredExpanded = filteredExpanded.filter((chunk) =>
+        langSet.has(getLanguage(chunk.filePath)),
+      );
+    }
     timingMs.expand = Date.now() - t0;
 
     // 6. 打包
     t0 = Date.now();
     const packer = new ContextPacker(this.projectId, this.config);
-    const files = await packer.pack([...seeds, ...expanded]);
+    const files = await packer.pack([...seeds, ...filteredExpanded]);
     timingMs.pack = Date.now() - t0;
 
     return {
       query,
       seeds,
-      expanded,
+      expanded: filteredExpanded,
       files,
       debug: {
         wVec: this.config.wVec,
@@ -133,11 +224,16 @@ export class SearchService {
   /**
    * 混合召回：向量 + 词法
    */
-  private async hybridRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async hybridRetrieve(
+    vectorQuery: string,
+    lexicalQuery: string,
+    languageWhereClause?: string,
+    languageFilter?: string[],
+  ): Promise<ScoredChunk[]> {
     // 并行执行向量和词法召回
     const [vectorResults, lexicalResults] = await Promise.all([
-      this.vectorRetrieve(query),
-      this.lexicalRetrieve(query),
+      this.vectorRetrieve(vectorQuery, languageWhereClause),
+      this.lexicalRetrieve(lexicalQuery, languageFilter),
     ]);
 
     logger.debug(
@@ -160,26 +256,16 @@ export class SearchService {
   /**
    * 向量召回
    */
-  private async vectorRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async vectorRetrieve(query: string, filter?: string): Promise<ScoredChunk[]> {
     if (!this.indexer) throw new Error('SearchService not initialized');
 
-    const results = await this.indexer.textSearch(
-      query,
-      this.config.vectorTopK,
-      this.buildVectorFilter(),
-    );
+    const results = await this.indexer.textSearch(query, this.config.vectorTopK, filter);
     if (!results) return [];
 
     // 按距离排序并转换
     return results
       .sort((a, b) => a._distance - b._distance)
       .slice(0, this.config.vectorTopM)
-      .filter((r) =>
-        matchesSearchFilter(this.filter, {
-          filePath: r.file_path,
-          language: r.language,
-        }),
-      )
       .map((r: VectorSearchResult, rank: number) => ({
         filePath: r.file_path,
         chunkIndex: r.chunk_index,
@@ -190,35 +276,23 @@ export class SearchService {
       }));
   }
 
-  private buildVectorFilter(): string | undefined {
-    if (!this.filter?.excludeLanguages?.length) {
-      return undefined;
-    }
-
-    if (this.filter.excludeLanguages.length === 1 && this.filter.excludeLanguages[0] === 'markdown') {
-      return "language != 'markdown'";
-    }
-
-    return undefined;
-  }
-
   /**
    * 词法召回（FTS）
    *
    * 优先使用 chunk 级 FTS（更精准）
    * 如果 chunks_fts 不可用，降级到文件级 FTS + overlap 下钻
    */
-  private async lexicalRetrieve(query: string): Promise<ScoredChunk[]> {
+  private async lexicalRetrieve(query: string, languageFilter?: string[]): Promise<ScoredChunk[]> {
     if (!this.db || !this.vectorStore) return [];
 
     // 优先尝试 chunk 级 FTS（更精准）
     if (isChunksFtsInitialized(this.db)) {
-      return this.lexicalRetrieveFromChunksFts(query);
+      return this.lexicalRetrieveFromChunksFts(query, languageFilter);
     }
 
     // 降级到文件级 FTS + overlap 下钻
     if (isFtsInitialized(this.db)) {
-      return this.lexicalRetrieveFromFilesFts(query);
+      return this.lexicalRetrieveFromFilesFts(query, languageFilter);
     }
 
     logger.debug('FTS 未初始化，跳过词法召回');
@@ -228,12 +302,15 @@ export class SearchService {
   /**
    * 从 chunks_fts 直接搜索（最优方案）
    */
-  private async lexicalRetrieveFromChunksFts(query: string): Promise<ScoredChunk[]> {
-    // db 在 init() 中已初始化
+  private async lexicalRetrieveFromChunksFts(
+    query: string,
+    languageFilter?: string[],
+  ): Promise<ScoredChunk[]> {
     const chunkResults = searchChunksFts(
       this.db as Database.Database,
       query,
       this.config.lexTotalChunks,
+      languageFilter,
     );
 
     if (chunkResults.length === 0) {
@@ -263,13 +340,7 @@ export class SearchService {
 
       for (const chunk of chunks) {
         const score = chunkScores.get(chunk.chunk_index);
-        if (
-          score !== undefined &&
-          matchesSearchFilter(this.filter, {
-            filePath: chunk.file_path,
-            language: chunk.language,
-          })
-        ) {
+        if (score !== undefined) {
           allChunks.push({
             filePath: chunk.file_path,
             chunkIndex: chunk.chunk_index,
@@ -298,13 +369,16 @@ export class SearchService {
   /**
    * 从 files_fts 搜索 + overlap 下钻（降级方案）
    */
-  private async lexicalRetrieveFromFilesFts(query: string): Promise<ScoredChunk[]> {
+  private async lexicalRetrieveFromFilesFts(
+    query: string,
+    languageFilter?: string[],
+  ): Promise<ScoredChunk[]> {
     // 1. FTS 搜索文件
-    // db 在 init() 中已初始化
     const fileResults = searchFilesFts(
       this.db as Database.Database,
       query,
       this.config.ftsTopKFiles,
+      languageFilter,
     );
     if (fileResults.length === 0) {
       logger.debug('FTS 无命中文件');
@@ -331,16 +405,9 @@ export class SearchService {
 
       const chunks = await this.vectorStore?.getFileChunks(filePath);
       if (!chunks || chunks.length === 0) continue;
-      const filteredChunks = chunks.filter((chunk) =>
-        matchesSearchFilter(this.filter, {
-          filePath: chunk.file_path,
-          language: chunk.language,
-        }),
-      );
-      if (filteredChunks.length === 0) continue;
 
       // 对每个 chunk 计算 token overlap 得分
-      const scoredChunks = filteredChunks.map((chunk) => ({
+      const scoredChunks = chunks.map((chunk) => ({
         chunk,
         overlapScore: this.scoreChunkTokenOverlap(chunk, queryTokens),
       }));
@@ -712,7 +779,7 @@ export class SearchService {
     if (seeds.length === 0) return [];
 
     const expander = await getGraphExpander(this.projectId, this.config);
-    const { chunks, stats } = await expander.expand(seeds, queryTokens, this.filter);
+    const { chunks, stats } = await expander.expand(seeds, queryTokens);
 
     logger.debug(stats, '上下文扩展统计');
 

@@ -54,6 +54,7 @@ loadEnv();
 
 export interface EmbeddingConfig {
   apiKey: string;
+  apiKeys?: string[];
   baseUrl: string;
   model: string;
   maxConcurrency: number;
@@ -63,6 +64,7 @@ export interface EmbeddingConfig {
 
 export interface RerankerConfig {
   apiKey: string;
+  apiKeys?: string[];
   baseUrl: string;
   model: string;
   topN: number;
@@ -84,15 +86,60 @@ export interface EnvCheckResult {
 const DEFAULT_API_KEY_PLACEHOLDER = 'your-api-key-here';
 
 /**
+ * 标准化单个 API Key：去除空白和占位符
+ */
+function normalizeApiKey(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === DEFAULT_API_KEY_PLACEHOLDER) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+/**
+ * 解析逗号分隔的 API Key 列表，并过滤空白与占位符
+ */
+function parseApiKeys(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((item) => normalizeApiKey(item))
+    .filter((item): item is string => item !== null);
+}
+
+/**
+ * 合并多 Key 与旧单 Key，保持顺序并去重
+ */
+function resolveApiKeys(singleKeyEnvName: string, multiKeyEnvName: string): string[] {
+  const parsedMultiKeys = parseApiKeys(process.env[multiKeyEnvName]);
+  const singleKey = normalizeApiKey(process.env[singleKeyEnvName]);
+
+  const merged = [...parsedMultiKeys];
+  if (singleKey) {
+    merged.push(singleKey);
+  }
+
+  return [...new Set(merged)];
+}
+
+/**
  * 检查 Embedding 相关环境变量是否已配置（不抛出错误）
  * @returns 检查结果，包含是否有效和缺失的变量列表
  */
 export function checkEmbeddingEnv(): EnvCheckResult {
   const missingVars: string[] = [];
+  const apiKeys = resolveApiKeys('EMBEDDINGS_API_KEY', 'EMBEDDINGS_API_KEYS');
 
-  const apiKey = process.env.EMBEDDINGS_API_KEY;
-  if (!apiKey || apiKey === DEFAULT_API_KEY_PLACEHOLDER) {
-    missingVars.push('EMBEDDINGS_API_KEY');
+  if (apiKeys.length === 0) {
+    missingVars.push('EMBEDDINGS_API_KEY 或 EMBEDDINGS_API_KEYS');
   }
   if (!process.env.EMBEDDINGS_BASE_URL) {
     missingVars.push('EMBEDDINGS_BASE_URL');
@@ -113,10 +160,10 @@ export function checkEmbeddingEnv(): EnvCheckResult {
  */
 export function checkRerankerEnv(): EnvCheckResult {
   const missingVars: string[] = [];
+  const apiKeys = resolveApiKeys('RERANK_API_KEY', 'RERANK_API_KEYS');
 
-  const apiKey = process.env.RERANK_API_KEY;
-  if (!apiKey || apiKey === DEFAULT_API_KEY_PLACEHOLDER) {
-    missingVars.push('RERANK_API_KEY');
+  if (apiKeys.length === 0) {
+    missingVars.push('RERANK_API_KEY 或 RERANK_API_KEYS');
   }
   if (!process.env.RERANK_BASE_URL) {
     missingVars.push('RERANK_BASE_URL');
@@ -136,13 +183,13 @@ export function checkRerankerEnv(): EnvCheckResult {
  * @throws 如果必需的配置项缺失
  */
 export function getEmbeddingConfig(): EmbeddingConfig {
-  const apiKey = process.env.EMBEDDINGS_API_KEY;
+  const apiKeys = resolveApiKeys('EMBEDDINGS_API_KEY', 'EMBEDDINGS_API_KEYS');
   const baseUrl = process.env.EMBEDDINGS_BASE_URL;
   const model = process.env.EMBEDDINGS_MODEL;
   const maxConcurrency = parseInt(process.env.EMBEDDINGS_MAX_CONCURRENCY || '10', 10);
 
-  if (!apiKey) {
-    throw new Error('EMBEDDINGS_API_KEY 环境变量未设置');
+  if (apiKeys.length === 0) {
+    throw new Error('EMBEDDINGS_API_KEY 或 EMBEDDINGS_API_KEYS 环境变量未设置');
   }
   if (!baseUrl) {
     throw new Error('EMBEDDINGS_BASE_URL 环境变量未设置');
@@ -154,7 +201,8 @@ export function getEmbeddingConfig(): EmbeddingConfig {
   const dimensions = parseInt(process.env.EMBEDDINGS_DIMENSIONS || '1024', 10);
 
   return {
-    apiKey,
+    apiKey: apiKeys[0],
+    apiKeys,
     baseUrl,
     model,
     maxConcurrency: Number.isNaN(maxConcurrency) ? 4 : maxConcurrency,
@@ -167,13 +215,13 @@ export function getEmbeddingConfig(): EmbeddingConfig {
  * @throws 如果必需的配置项缺失
  */
 export function getRerankerConfig(): RerankerConfig {
-  const apiKey = process.env.RERANK_API_KEY;
+  const apiKeys = resolveApiKeys('RERANK_API_KEY', 'RERANK_API_KEYS');
   const baseUrl = process.env.RERANK_BASE_URL;
   const model = process.env.RERANK_MODEL;
   const topN = parseInt(process.env.RERANK_TOP_N || '10', 10);
 
-  if (!apiKey) {
-    throw new Error('RERANK_API_KEY 环境变量未设置');
+  if (apiKeys.length === 0) {
+    throw new Error('RERANK_API_KEY 或 RERANK_API_KEYS 环境变量未设置');
   }
   if (!baseUrl) {
     throw new Error('RERANK_BASE_URL 环境变量未设置');
@@ -183,7 +231,8 @@ export function getRerankerConfig(): RerankerConfig {
   }
 
   return {
-    apiKey,
+    apiKey: apiKeys[0],
+    apiKeys,
     baseUrl,
     model,
     topN: Number.isNaN(topN) ? 10 : topN,
@@ -346,21 +395,50 @@ const DEFAULT_EXCLUDE_PATTERNS = [
 ];
 
 /**
+ * 默认包含模式
+ *
+ * 默认值为空，避免把未知扩展名文件全部纳入索引。
+ */
+const DEFAULT_INCLUDE_PATTERNS: string[] = [];
+
+/**
+ * 解析逗号分隔模式字符串
+ * @param raw 原始模式字符串
+ * @returns 解析后的模式数组
+ */
+function parseCommaSeparatedPatterns(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(',')
+    .map((pattern) => pattern.trim())
+    .filter(Boolean);
+}
+
+/**
  * 获取合并后的排除模式列表
  * @returns 排除模式数组
  */
 export function getExcludePatterns(): string[] {
-  const envPatterns = process.env.IGNORE_PATTERNS;
+  const envPatterns = parseCommaSeparatedPatterns(process.env.IGNORE_PATTERNS);
   const patterns = [...DEFAULT_EXCLUDE_PATTERNS];
 
-  if (envPatterns) {
-    // 解析逗号分隔的环境变量
-    const additional = envPatterns
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    patterns.push(...additional);
-  }
+  patterns.push(...envPatterns);
+
+  return patterns;
+}
+
+/**
+ * 获取合并后的显式包含模式列表
+ * @returns 包含模式数组
+ */
+export function getIncludePatterns(): string[] {
+  const envPatterns = parseCommaSeparatedPatterns(process.env.INCLUDE_PATTERNS);
+  const patterns = [...DEFAULT_INCLUDE_PATTERNS];
+
+  patterns.push(...envPatterns);
 
   return patterns;
 }

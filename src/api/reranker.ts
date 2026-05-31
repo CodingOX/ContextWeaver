@@ -82,9 +82,26 @@ export interface RerankOptions {
  */
 export class RerankerClient {
   private config: RerankerConfig;
+  private apiKeys: string[];
+  private apiKeyCursor = 0;
 
   constructor(config?: RerankerConfig) {
     this.config = config || getRerankerConfig();
+
+    const configuredApiKeys = Array.isArray(this.config.apiKeys)
+      ? this.config.apiKeys
+          .map((key) => key?.trim())
+          .filter((key): key is string => Boolean(key))
+      : [];
+
+    const fallbackApiKey = this.config.apiKey.trim();
+    this.apiKeys = configuredApiKeys.length > 0 ? [...configuredApiKeys] : [fallbackApiKey];
+  }
+
+  private nextApiKey(): string {
+    const key = this.apiKeys[this.apiKeyCursor] || this.config.apiKey;
+    this.apiKeyCursor = (this.apiKeyCursor + 1) % this.apiKeys.length;
+    return key;
   }
 
   /**
@@ -122,11 +139,13 @@ export class RerankerClient {
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
+        const apiKey = this.nextApiKey();
+
         const response = await fetch(this.config.baseUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.config.apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify(requestBody),
         });

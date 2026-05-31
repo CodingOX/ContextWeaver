@@ -22,6 +22,8 @@ export interface SearchConfig {
   wVec: number;
   wLex: number;
   fusedTopM: number;
+  /** 融合后、Rerank 前的单文件候选上限 */
+  preRerankPerFileCap: number;
 
   // Rerank
   rerankTopN: number;
@@ -87,6 +89,28 @@ export interface SearchConfig {
  */
 export interface SearchScopeOptions {
   codeOnly?: boolean;
+}
+
+// ===========================================
+// 查询通道类型
+// ===========================================
+
+/** 查询分通道 */
+export interface QueryChannels {
+  /** 向量召回查询（仅语义意图） */
+  vectorQuery: string;
+  /** 词法召回查询（术语优先） */
+  lexicalQuery: string;
+  /** Rerank 查询（完整查询） */
+  rerankQuery: string;
+}
+
+/** 上下文构建选项 */
+export interface BuildContextPackOptions {
+  /** 文件路径过滤器，返回 true 表示保留 */
+  filePathFilter?: (filePath: string) => boolean;
+  /** 语言过滤白名单，空数组或 undefined 表示不过滤 */
+  languageFilter?: string[];
 }
 
 // ===========================================

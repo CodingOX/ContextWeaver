@@ -2,94 +2,57 @@
  * 解析器池管理
  *
  * 按语言缓存 Parser 实例，避免重复初始化。
- * 支持动态加载语言语法包。
+ * 基于 RuntimeRegistry 调度运行时。
  *
  */
-import Parser from '@keqingmoe/tree-sitter';
+import Parser from 'tree-sitter';
+import { BuiltinRuntimeTs25 } from './runtime/BuiltinRuntimeTs25.js';
+import { discoverPluginPackages } from './runtime/PluginLoader.js';
+import { RuntimeRegistry } from './runtime/RuntimeRegistry.js';
 
-// 语言到语法模块的映射
-const GRAMMAR_MODULES: Record<string, string> = {
-  typescript: 'tree-sitter-typescript',
-  javascript: 'tree-sitter-javascript',
-  python: 'tree-sitter-python',
-  go: 'tree-sitter-go',
-  rust: 'tree-sitter-rust',
-  java: 'tree-sitter-java',
-  kotlin: 'tree-sitter-kotlin',
-  php: 'tree-sitter-php',
-  ruby: 'tree-sitter-ruby',
-  swift: 'tree-sitter-swift',
-  dart: 'tree-sitter-dart',
-  c: 'tree-sitter-c',
-  cpp: 'tree-sitter-cpp',
-  c_sharp: 'tree-sitter-c-sharp',
-};
+const registry = new RuntimeRegistry();
+registry.register(new BuiltinRuntimeTs25());
 
-// 缓存已加载的语法
-// tree-sitter Language 类型是原生对象，没有导出类型定义
-type TreeSitterLanguage = unknown;
-const loadedGrammars: Map<string, TreeSitterLanguage> = new Map();
+let runtimeInitializationPromise: Promise<void> | null = null;
+
+const parserLoadingCache: Map<string, Promise<Parser | null>> = new Map();
 
 // 缓存已初始化的解析器
 const parserCache: Map<string, Parser> = new Map();
 
 /**
- * 加载指定语言的语法
- *
- * tree-sitter 0.20.x 的导出格式：
- * - tree-sitter-typescript: { typescript, tsx } (需要取 .typescript)
- * - 其他语言包: default export 直接是 Language 对象
+ * 初始化运行时注册表：内置运行时 + 自动发现插件运行时
  */
-async function loadGrammar(language: string): Promise<TreeSitterLanguage | null> {
-  // 检查缓存
-  const cached = loadedGrammars.get(language);
-  if (cached) return cached;
-
-  const moduleName = GRAMMAR_MODULES[language];
-  if (!moduleName) return null;
-
-  try {
-    // 动态导入语法模块
-    const grammarModule = await import(moduleName);
-
-    let grammar: TreeSitterLanguage | null = null;
-
-    // tree-sitter-typescript 包特殊处理（包含 typescript 和 tsx 两个语言）
-    if (language === 'typescript') {
-      grammar = grammarModule.default?.typescript ?? grammarModule.typescript;
-    } else if (language === 'php') {
-      grammar = grammarModule.default?.php ?? grammarModule.php;
-    } else {
-      // 其他语言包: 0.20.x 版本直接使用 default export
-      const exported = grammarModule.default ?? grammarModule;
-
-      // 判断是否是有效的 Language 对象（有 nodeTypeInfo 属性）
-      if (exported && typeof exported === 'object' && 'nodeTypeInfo' in exported) {
-        grammar = exported;
-      }
-      // 尝试 language property（某些版本使用这种格式）
-      else if (exported?.language) {
-        grammar = exported.language;
-      }
-      // 尝试以语言名命名的属性
-      else if (exported?.[language]) {
-        grammar = exported[language];
-      }
+async function initializeRuntimes(): Promise<void> {
+  const pluginRuntimes = await discoverPluginPackages(undefined, {
+    suppressMissingModuleError: true,
+  });
+  for (const runtime of pluginRuntimes) {
+    try {
+      registry.register(runtime);
+    } catch (err) {
+      const error = err as { message?: string };
+      console.warn(`[ParserPool] 注册插件 runtime 失败(${runtime.id}): ${error.message}`);
     }
-
-    if (!grammar) {
-      console.error(
-        `[ParserPool] Could not extract grammar for ${language} from module ${moduleName}`,
-      );
-      return null;
-    }
-
-    loadedGrammars.set(language, grammar);
-    return grammar;
-  } catch (err) {
-    console.error(`[ParserPool] Failed to load grammar for ${language}:`, err);
-    return null;
   }
+}
+
+function ensureRuntimesInitialized(): Promise<void> {
+  if (!runtimeInitializationPromise) {
+    runtimeInitializationPromise = initializeRuntimes().catch((err) => {
+      const error = err as { message?: string };
+      console.warn(`[ParserPool] 初始化插件运行时失败: ${error.message}`);
+    });
+  }
+
+  return runtimeInitializationPromise;
+}
+
+function isTreeSitterParser(parser: unknown): parser is Parser {
+  if (!parser || typeof parser !== 'object') return false;
+
+  const value = parser as Partial<Parser>;
+  return typeof value.parse === 'function' && typeof value.setLanguage === 'function';
 }
 
 /**
@@ -98,26 +61,39 @@ async function loadGrammar(language: string): Promise<TreeSitterLanguage | null>
  * @returns Parser 实例，如果不支持该语言则返回 null
  */
 export async function getParser(language: string): Promise<Parser | null> {
-  // 检查缓存
   const cached = parserCache.get(language);
   if (cached) return cached;
 
-  // 加载语法
-  const grammar = await loadGrammar(language);
-  if (!grammar) return null;
+  const loading = parserLoadingCache.get(language);
+  if (loading) return loading;
 
-  // 创建解析器
-  const parser = new Parser();
-  parser.setLanguage(grammar);
+  const loadingPromise = (async () => {
+    await ensureRuntimesInitialized();
 
-  // 缓存
-  parserCache.set(language, parser);
-  return parser;
+    const runtime = registry.findRuntime(language);
+    if (!runtime) return null;
+
+    const parser = await runtime.getParser(language);
+    if (!isTreeSitterParser(parser)) {
+      if (parser !== null) {
+        console.warn(`[ParserPool] runtime(${runtime.id}) 返回了非法 parser，语言=${language}`);
+      }
+      return null;
+    }
+
+    parserCache.set(language, parser);
+    return parser;
+  })().finally(() => {
+    parserLoadingCache.delete(language);
+  });
+
+  parserLoadingCache.set(language, loadingPromise);
+  return loadingPromise;
 }
 
 /**
  * 检查是否支持指定语言
  */
 export function isLanguageSupported(language: string): boolean {
-  return language in GRAMMAR_MODULES;
+  return registry.findRuntime(language) !== null;
 }

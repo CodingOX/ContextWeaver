@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: SearchConfig = {
   wVec: 0.6,
   wLex: 0.4,
   fusedTopM: 60,
+  preRerankPerFileCap: 5,
 
   // Rerank
   rerankTopN: 10,

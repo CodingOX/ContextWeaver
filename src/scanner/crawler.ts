@@ -23,7 +23,7 @@ export async function crawl(rootPath: string): Promise<string[]> {
         new RegExp(`^${escapeRegExp(normalizedRootPath)}/?`),
         '',
       );
-      return !isFiltered(relativePath) && isAllowedFile(filePath);
+      return !isFiltered(relativePath) && isAllowedFile(filePath, relativePath);
     });
 
   const paths = await api.crawl(rootPath).withPromise();
