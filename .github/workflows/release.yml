@@ -29,15 +29,18 @@ jobs:
 
       - name: Resolve release version
         id: rel
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            INPUT="${{ github.event.inputs.version }}"
-            VER="${INPUT#v}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VER="${INPUT_VERSION#v}"
             echo "tag=v$VER" >> "$GITHUB_OUTPUT"
             echo "ver=$VER" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "ver=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install pnpm
@@ -50,8 +53,8 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-          cache: "pnpm"
-      
+          cache: pnpm
+
       - name: Upgrade npm for Trusted Publishing (OIDC)
         run: |
           npm i -g npm@^11.5.1
@@ -66,18 +69,22 @@ jobs:
         run: pnpm run build:release
 
       - name: Verify tag matches package.json version
+        env:
+          EXPECTED_VER: ${{ steps.rel.outputs.ver }}
         run: |
           PKG="$(node -p "require('./package.json').version")"
-          if [ "${{ steps.rel.outputs.ver }}" != "$PKG" ]; then
-            echo "Version mismatch: tag v${{ steps.rel.outputs.ver }} != package.json $PKG"
+          if [ "$EXPECTED_VER" != "$PKG" ]; then
+            echo "Version mismatch: tag v$EXPECTED_VER != package.json $PKG"
             exit 1
           fi
 
       - name: Check if version already exists on npm (dispatch only)
         if: github.event_name == 'workflow_dispatch'
         id: npmcheck
+        env:
+          CHECK_VER: ${{ steps.rel.outputs.ver }}
         run: |
-          if npm view @hsingjui/contextweaver@${{ steps.rel.outputs.ver }} version >/dev/null 2>&1; then
+          if npm view @alistar.max/contextweaver@"$CHECK_VER" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -87,21 +94,46 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || steps.npmcheck.outputs.exists != 'true'
         run: npm publish --no-git-checks --access public --provenance
 
-      # push tag 和手动重跑都创建/更新 GitHub Release（手动重跑时显式指定 tag_name）
+      - name: Generate changelog
+        id: changelog
+        env:
+          CURRENT_TAG: ${{ steps.rel.outputs.tag }}
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -n1)
+
+          echo "## What's Changed" > /tmp/changelog.md
+          echo "" >> /tmp/changelog.md
+
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "$CURRENT_TAG" ]; then
+            git log --pretty=format:"- %s (%h)" --no-merges >> /tmp/changelog.md
+          else
+            git log "${PREVIOUS_TAG}".."${CURRENT_TAG}" --pretty=format:"- %s (%h)" --no-merges >> /tmp/changelog.md
+            echo "" >> /tmp/changelog.md
+            echo "" >> /tmp/changelog.md
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${CURRENT_TAG}" >> /tmp/changelog.md
+          fi
+
+          cat /tmp/changelog.md
+
+      - name: Package release artifact
+        env:
+          VER: ${{ steps.rel.outputs.ver }}
+        run: |
+          cd dist
+          tar czf ../contextweaver-${VER}.tar.gz .
+          cd ..
+          sha256sum contextweaver-${VER}.tar.gz > SHA256SUMS
+
       - name: Create GitHub Release
         if: startsWith(steps.rel.outputs.tag, 'v')
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           tag_name: ${{ steps.rel.outputs.tag }}
-          generate_release_notes: true
+          body_path: /tmp/changelog.md
           draft: false
           prerelease: false
-          body: |
-            ## 🚀 ContextWeaver ${{ steps.rel.outputs.tag }}
-
-            ### Installation
-            ```bash
-            npm install -g @hsingjui/contextweaver
-            # or
-            pnpm add -g @hsingjui/contextweaver
-            ```
+          files: |
+            contextweaver-${{ steps.rel.outputs.ver }}.tar.gz
+            SHA256SUMS
