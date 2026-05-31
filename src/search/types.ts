@@ -80,6 +80,15 @@ export interface SearchConfig {
   smartMaxK: number;
 }
 
+/**
+ * 搜索范围选项。
+ *
+ * 第一阶段只落地 codeOnly，后续如需扩展再补更细粒度范围控制。
+ */
+export interface SearchScopeOptions {
+  codeOnly?: boolean;
+}
+
 // ===========================================
 // 搜索结果类型
 // ===========================================

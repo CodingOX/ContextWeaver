@@ -148,9 +148,10 @@ function createConsoleStream(): Writable {
           line += ` ${color}${extraStr}${reset}`;
         }
 
-        process.stdout.write(`${line}\n`, callback);
+        // CLI 结果应保留给 stdout，日志统一走 stderr，避免污染 JSON/管道输出。
+        process.stderr.write(`${line}\n`, callback);
       } catch {
-        process.stdout.write(chunk.toString(), callback);
+        process.stderr.write(chunk.toString(), callback);
       }
     },
   });

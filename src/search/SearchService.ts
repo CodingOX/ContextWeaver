@@ -26,6 +26,7 @@ import {
   segmentQuery,
 } from './fts.js';
 import { getGraphExpander } from './GraphExpander.js';
+import { matchesSearchFilter, type SearchFilter } from './filtering.js';
 import type { ContextPack, ScoredChunk, SearchConfig } from './types.js';
 
 // ===========================================
@@ -56,10 +57,17 @@ export class SearchService {
   private vectorStore: VectorStore | null = null;
   private db: Database.Database | null = null;
   private config: SearchConfig;
+  private filter?: SearchFilter;
 
-  constructor(projectId: string, _projectPath: string, config?: Partial<SearchConfig>) {
+  constructor(
+    projectId: string,
+    _projectPath: string,
+    config?: Partial<SearchConfig>,
+    filter?: SearchFilter,
+  ) {
     this.projectId = projectId;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.filter = filter;
   }
 
   async init(): Promise<void> {
@@ -155,13 +163,23 @@ export class SearchService {
   private async vectorRetrieve(query: string): Promise<ScoredChunk[]> {
     if (!this.indexer) throw new Error('SearchService not initialized');
 
-    const results = await this.indexer.textSearch(query, this.config.vectorTopK);
+    const results = await this.indexer.textSearch(
+      query,
+      this.config.vectorTopK,
+      this.buildVectorFilter(),
+    );
     if (!results) return [];
 
     // 按距离排序并转换
     return results
       .sort((a, b) => a._distance - b._distance)
       .slice(0, this.config.vectorTopM)
+      .filter((r) =>
+        matchesSearchFilter(this.filter, {
+          filePath: r.file_path,
+          language: r.language,
+        }),
+      )
       .map((r: VectorSearchResult, rank: number) => ({
         filePath: r.file_path,
         chunkIndex: r.chunk_index,
@@ -170,6 +188,18 @@ export class SearchService {
         record: r,
         _rank: rank, // 用于 RRF
       }));
+  }
+
+  private buildVectorFilter(): string | undefined {
+    if (!this.filter?.excludeLanguages?.length) {
+      return undefined;
+    }
+
+    if (this.filter.excludeLanguages.length === 1 && this.filter.excludeLanguages[0] === 'markdown') {
+      return "language != 'markdown'";
+    }
+
+    return undefined;
   }
 
   /**
@@ -233,7 +263,13 @@ export class SearchService {
 
       for (const chunk of chunks) {
         const score = chunkScores.get(chunk.chunk_index);
-        if (score !== undefined) {
+        if (
+          score !== undefined &&
+          matchesSearchFilter(this.filter, {
+            filePath: chunk.file_path,
+            language: chunk.language,
+          })
+        ) {
           allChunks.push({
             filePath: chunk.file_path,
             chunkIndex: chunk.chunk_index,
@@ -295,9 +331,16 @@ export class SearchService {
 
       const chunks = await this.vectorStore?.getFileChunks(filePath);
       if (!chunks || chunks.length === 0) continue;
+      const filteredChunks = chunks.filter((chunk) =>
+        matchesSearchFilter(this.filter, {
+          filePath: chunk.file_path,
+          language: chunk.language,
+        }),
+      );
+      if (filteredChunks.length === 0) continue;
 
       // 对每个 chunk 计算 token overlap 得分
-      const scoredChunks = chunks.map((chunk) => ({
+      const scoredChunks = filteredChunks.map((chunk) => ({
         chunk,
         overlapScore: this.scoreChunkTokenOverlap(chunk, queryTokens),
       }));
@@ -669,7 +712,7 @@ export class SearchService {
     if (seeds.length === 0) return [];
 
     const expander = await getGraphExpander(this.projectId, this.config);
-    const { chunks, stats } = await expander.expand(seeds, queryTokens);
+    const { chunks, stats } = await expander.expand(seeds, queryTokens, this.filter);
 
     logger.debug(stats, '上下文扩展统计');
 

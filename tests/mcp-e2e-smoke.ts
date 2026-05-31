@@ -254,6 +254,11 @@ async function main() {
 
     assert.equal(result.code, 0, `[${item.name}] CLI 退出码异常\n${result.stderr}`);
     assert.match(result.stdout, /Found\s+\d+\s+relevant\s+code\s+blocks/i, `[${item.name}] 无检索结果摘要`);
+    assert.doesNotMatch(
+      result.stdout,
+      /code_only|--code-only/i,
+      `[${item.name}] MCP 现有调用路径不应暴露 code-only 参数痕迹`,
+    );
     assert.match(
       result.stdout,
       new RegExp(item.expectedFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),

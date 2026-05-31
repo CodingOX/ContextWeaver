@@ -8,6 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cac from 'cac';
 import { generateProjectId } from './db/index.js';
+import { formatSearchText } from './app/formatSearchText.js';
+import { MissingEnvError, searchCodebase } from './app/searchCodebase.js';
 import { type ScanStats, scan } from './scanner/index.js';
 import { logger } from './utils/logger.js';
 
@@ -147,48 +149,130 @@ cli.command('mcp', '启动 MCP 服务器').action(async () => {
   }
 });
 
+export interface SearchCommandOptions {
+  repoPath?: string;
+  query?: string;
+  informationRequest?: string;
+  technicalTerms?: string;
+  zen?: boolean;
+  json?: boolean;
+  codeOnly?: boolean;
+}
+
+export interface SearchCommandDependencies {
+  search?: typeof searchCodebase;
+  write?: (text: string) => void;
+}
+
+function buildJsonErrorPayload(
+  query: string,
+  error: { name: string; message: string; missingVars: string[] },
+): string {
+  return JSON.stringify({
+    version: pkg.version,
+    success: false,
+    query,
+    error: {
+      name: error.name,
+      message: error.message,
+      missingVars: error.missingVars,
+    },
+  });
+}
+
+export async function runSearchCommand(
+  options: SearchCommandOptions,
+  deps: SearchCommandDependencies = {},
+): Promise<string> {
+  const repoPath = options.repoPath ? path.resolve(options.repoPath) : process.cwd();
+  const informationRequest = options.query || options.informationRequest;
+  if (!informationRequest) {
+    throw new Error('缺少 --query 或 --information-request');
+  }
+
+  const technicalTerms = (options.technicalTerms || '')
+    .split(',')
+    .map((term) => term.trim())
+    .filter(Boolean);
+  const searchQuery = [informationRequest, ...technicalTerms].filter(Boolean).join(' ');
+
+  const useZen = options.zen !== false;
+  const search = deps.search ?? searchCodebase;
+  const write = deps.write ?? ((text: string) => process.stdout.write(`${text}\n`));
+
+  try {
+    const result = await search({
+      repoPath,
+      query: searchQuery,
+      configOverride: useZen ? undefined : {},
+      codeOnly: options.codeOnly,
+    });
+
+    if (options.json) {
+      // JSON 模式只输出计划要求的稳定字段，便于脚本消费。
+      const jsonText = JSON.stringify({
+        version: pkg.version,
+        success: true,
+        projectId: result.projectId,
+        query: result.query,
+        seeds: result.contextPack.seeds,
+        expanded: result.contextPack.expanded,
+        files: result.contextPack.files,
+      });
+      write(jsonText);
+      return jsonText;
+    }
+
+    const text = formatSearchText(result.contextPack);
+    write(text);
+    return text;
+  } catch (error) {
+    if (error instanceof MissingEnvError) {
+      if (options.json) {
+        const jsonText = buildJsonErrorPayload(searchQuery, {
+          name: error.name,
+          message: error.message,
+          missingVars: error.missingVars,
+        });
+        write(jsonText);
+        return jsonText;
+      }
+
+      const { formatEnvMissingResponse } = await import('./mcp/tools/codebaseRetrieval.js');
+      const text = formatEnvMissingResponse(error.missingVars).content[0]?.text ?? '';
+      write(text);
+      return text;
+    }
+
+    throw error;
+  }
+}
+
 cli
   .command('search', '本地检索（参数对齐 MCP）')
   .option('--repo-path <path>', '代码库根目录（默认当前目录）')
+  .option('--query <text>', '自然语言问题描述（首选）')
   .option('--information-request <text>', '自然语言问题描述（必填）')
   .option('--technical-terms <terms>', '精确术语（逗号分隔）')
   .option('--zen', '使用 MCP Zen 配置（默认开启）')
-  .action(
-    async (options: {
-      repoPath?: string;
-      informationRequest?: string;
-      technicalTerms?: string;
-      zen?: boolean;
-    }) => {
-      const repoPath = options.repoPath ? path.resolve(options.repoPath) : process.cwd();
-      const informationRequest = options.informationRequest;
-      if (!informationRequest) {
-        logger.error('缺少 --information-request');
-        process.exit(1);
-      }
+  .option('--json', '输出 JSON 结果')
+  .option('--code-only', '搜索阶段排除文档类结果，只返回源码相关结果')
+  .action(async (options: SearchCommandOptions) => {
+    if (!options.query && !options.informationRequest) {
+      logger.error('缺少 --query 或 --information-request');
+      process.exit(1);
+    }
 
-      const technicalTerms = (options.technicalTerms || '')
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
+    try {
+      await runSearchCommand(options);
+    } catch (err) {
+      const error = err as { message?: string; stack?: string };
+      logger.error({ err, stack: error.stack }, `搜索失败: ${error.message}`);
+      process.exit(1);
+    }
+  });
 
-      const useZen = options.zen !== false;
-
-      const { handleCodebaseRetrieval } = await import('./mcp/tools/codebaseRetrieval.js');
-
-      const response = await handleCodebaseRetrieval(
-        {
-          repo_path: repoPath,
-          information_request: informationRequest,
-          technical_terms: technicalTerms.length > 0 ? technicalTerms : undefined,
-        },
-        useZen ? undefined : {},
-      );
-
-      const text = response.content.map((item) => item.text).join('\n');
-      process.stdout.write(`${text}\n`);
-    },
-  );
-
-cli.help();
-cli.parse();
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  cli.help();
+  cli.parse();
+}
