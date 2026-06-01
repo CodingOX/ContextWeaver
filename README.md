@@ -48,7 +48,7 @@
 
 ### 环境要求
 
-- Node.js >= 20 且 < 25（推荐 Node.js 22/24 LTS）
+- Node.js >= 20 且 < 24（推荐 Node.js 22 LTS，不支持 Node 24）
 - npm >= 10
 
 ### 一、安装
@@ -212,15 +212,11 @@ rg "PluginLoader\.ts|DEFAULT_PLUGIN_CANDIDATES" /tmp/contextweaver-smoke.txt
 
 ##### Q2：Node 24 能安装吗？
 
-可以。当前版本支持 `Node.js >= 20 且 < 25`，包含 Node 24。
-建议优先使用 Node 22/24 LTS。
+不可以。当前版本仅支持 `Node.js >= 20 且 < 24`。
+建议使用 Node 22 LTS。
 
-但在 macOS + Node 24 环境下，部分原生依赖可能会触发本地编译。
-如果安装阶段遇到编译失败，可临时使用：
-
-```bash
-CXXFLAGS='-std=c++20' npm install -g @alistar.max/contextweaver
-```
+原因是 `tree-sitter` 原生模块在当前安装链路下无法稳定支持 Node 24，
+安装阶段会直接被 `preinstall` 守卫拦截，并提示切换到 Node 22 LTS。
 
 ##### Q3：不装插件会影响使用吗？
 

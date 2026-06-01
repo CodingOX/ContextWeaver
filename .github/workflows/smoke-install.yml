@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22', '24']
+        node: ['20', '22']
         pm: ['npm', 'pnpm']
 
     steps:
@@ -74,7 +74,3 @@ jobs:
           NODE
           pnpm add "$GITHUB_WORKSPACE/${{ steps.pack.outputs.tgz }}"
           pnpm exec contextweaver --version
-
-      - name: Node24 local runtime smoke
-        if: matrix.node == '24'
-        run: node tests/install/node24-smoke.mjs

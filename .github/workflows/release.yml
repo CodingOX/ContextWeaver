@@ -160,7 +160,7 @@ jobs:
             ## 🚀 ContextWeaver ${{ steps.rel.outputs.tag }}
 
             ### 版本亮点
-            - 支持 Node.js 24（Node 要求：`>=20 <25`）
+            - 支持 Node.js 20 / 22（Node 要求：`>=20 <24`，推荐 Node 22 LTS）
             - 主包默认内置 JavaScript / Python / Go 的 AST 分片能力
             - 可选语言插件改为 `lang-all`（默认推荐）+ 按语言包安装
 

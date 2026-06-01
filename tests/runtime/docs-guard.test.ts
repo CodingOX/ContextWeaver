@@ -10,4 +10,5 @@ assert.match(readme, /@alistar\.max\/contextweaver-lang-rust/);
 assert.match(readme, /@alistar\.max\/contextweaver-lang-ts21/);
 assert.match(readme, /@alistar\.max\/contextweaver-lang-ts22/);
 assert.match(readme, /@alistar\.max\/contextweaver-lang-all/);
-assert.match(readme, /Node\.js >= 20 且 < 25/);
+assert.match(readme, /Node\.js >= 20 且 < 24/);
+assert.match(readme, /不支持 Node 24/);
