@@ -237,6 +237,18 @@ tool_timeout_sec = 30
 
 MCP 模式下，`codebase-retrieval` 每次调用都会先执行自动索引检查：首次使用自动完整索引，后续自动增量索引。
 
+### Claude Code Skill
+
+项目提供了 Claude Code 的 `contextweaver-search` skill（位于 `skills/contextweaver-search/SKILL.md`），教 Claude 如何正确使用 ContextWeaver CLI 进行语义搜索。Skill 涵盖环境检查、搜索策略决策流程、常见错误规避等最佳实践。
+
+将此 skill 安装到你的项目后，Claude 在探索代码时会自动遵循 ContextWeaver 的搜索规范——例如仅确定 100% 确定符号存在时才加 `--technical-terms`，理解 `--source-code-only` 与 `--include-languages` 互斥等。
+
+安装方式：将 `skills/contextweaver-search/` 目录复制到目标项目的 `.claude/skills/` 下即可：
+
+```bash
+cp -r skills/contextweaver-search /path/to/your-project/.claude/skills/
+```
+
 ## ✅ 测试流程
 
 ### 安装后冒烟
