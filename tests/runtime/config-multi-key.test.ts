@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   checkEmbeddingEnv,
@@ -18,7 +22,10 @@ const MANAGED_ENV_KEYS = [
   'RERANK_MODEL',
 ] as const;
 
-function runWithEnv(overrides: Partial<Record<(typeof MANAGED_ENV_KEYS)[number], string>>, fn: () => void): void {
+function runWithEnv(
+  overrides: Partial<Record<(typeof MANAGED_ENV_KEYS)[number], string>>,
+  fn: () => void,
+): void {
   const snapshot = new Map<string, string | undefined>();
   for (const key of MANAGED_ENV_KEYS) {
     snapshot.set(key, process.env[key]);
@@ -177,4 +184,36 @@ test('缺失有效 key 时应报错并返回缺失项', { concurrency: false }, 
       assert.throws(() => getRerankerConfig(), /RERANK_API_KEY 或 RERANK_API_KEYS 环境变量未设置/);
     },
   );
+});
+
+function readIsMcpMode(argv: string[]): boolean {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'contextweaver-config-mode-'));
+  const script = `
+    process.argv = ${JSON.stringify(['node', 'contextweaver', ...argv])};
+    const mod = await import('./src/config.ts');
+    console.log(String(mod.isMcpMode));
+  `;
+
+  try {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: {
+        HOME: fakeHome,
+        PATH: process.env.PATH ?? '',
+        NODE_ENV: 'production',
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim() === 'true';
+  } finally {
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+}
+
+test('isMcpMode 仅在 mcp 子命令时启用', { concurrency: false }, () => {
+  assert.equal(readIsMcpMode(['mcp']), true);
+  assert.equal(readIsMcpMode(['index', 'mcp']), false);
+  assert.equal(readIsMcpMode(['index', '/tmp/some-mcp-project']), false);
 });
