@@ -12,11 +12,11 @@ import type Database from 'better-sqlite3';
 import { getRerankerClient } from '../api/reranker.js';
 import { getEmbeddingConfig } from '../config.js';
 import { initDb } from '../db/index.js';
-import { getIndexer, type Indexer } from '../indexer/index.js';
+import { closeIndexer, getIndexer, type Indexer } from '../indexer/index.js';
 import { getLanguage } from '../scanner/language.js';
 import { isDebugEnabled, logger } from '../utils/logger.js';
 import type { SearchResult as VectorSearchResult } from '../vectorStore/index.js';
-import { getVectorStore, type VectorStore } from '../vectorStore/index.js';
+import { closeVectorStore, getVectorStore, type VectorStore } from '../vectorStore/index.js';
 import { ContextPacker } from './ContextPacker.js';
 import { DEFAULT_CONFIG } from './config.js';
 import {
@@ -123,6 +123,28 @@ export class SearchService {
     this.indexer = await getIndexer(this.projectId, embeddingConfig.dimensions);
     this.vectorStore = await getVectorStore(this.projectId, embeddingConfig.dimensions);
     this.db = initDb(this.projectId);
+  }
+
+  /**
+   * 释放搜索请求持有的本地资源。
+   *
+   * SearchService 会为 CLI/MCP 查询打开 SQLite 与向量库连接；长时间运行的 MCP
+   * 进程必须在一次查询结束后显式释放，避免按项目累积连接与工厂缓存。
+   */
+  async close(): Promise<void> {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+
+    if (this.vectorStore) {
+      await this.vectorStore.close();
+      this.vectorStore = null;
+    }
+
+    this.indexer = null;
+    closeIndexer(this.projectId);
+    await closeVectorStore(this.projectId);
   }
 
   // 公开接口
@@ -573,7 +595,7 @@ export class SearchService {
       .map(({ score, chunk, sources }) => ({
         ...chunk,
         score,
-        source: sources.size > 1 ? ('vector' as const) : chunk.source, // 保留原始来源
+        source: sources.size > 1 ? ('both' as const) : chunk.source,
       }))
       .sort((a, b) => b.score - a.score);
 
@@ -818,7 +840,6 @@ export class SearchService {
     if (text.length <= maxLen) return text;
 
     const lines = text.split('\n');
-    const _textLower = text.toLowerCase();
 
     // 找命中行（包含任意 query token 的行）
     let hitLineIdx = -1;

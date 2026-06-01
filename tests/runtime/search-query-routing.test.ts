@@ -3,6 +3,21 @@ import test from 'node:test';
 import { SearchService } from '../../src/search/SearchService.js';
 import type { ScoredChunk } from '../../src/search/types.js';
 
+type RankedChunk = ScoredChunk & { _rank?: number };
+
+interface SearchServiceHarness {
+  buildContextPack: SearchService['buildContextPack'];
+  close: SearchService['close'];
+  hybridRetrieve: (vectorQuery: string, lexicalQuery: string) => Promise<ScoredChunk[]>;
+  rerank: (rerankQuery: string, items: ScoredChunk[]) => Promise<ScoredChunk[]>;
+  applySmartCutoff: (items: ScoredChunk[]) => ScoredChunk[];
+  expand: () => Promise<ScoredChunk[]>;
+  fuse: (vectorResults: RankedChunk[], lexicalResults: RankedChunk[]) => ScoredChunk[];
+  db: { close: () => void } | null;
+  vectorStore: { close: () => Promise<void> } | null;
+  indexer: unknown | null;
+}
+
 const CANDIDATE: ScoredChunk = {
   filePath: 'src/demo.ts',
   chunkIndex: 0,
@@ -30,23 +45,23 @@ const CANDIDATE: ScoredChunk = {
 
 test('SearchService 应按通道路由 query', async () => {
   const service = new SearchService('search-query-routing-test', '/tmp/project');
-  const anyService = service as any;
+  const harness = service as unknown as SearchServiceHarness;
 
   let capturedVector = '';
   let capturedLexical = '';
   let capturedRerank = '';
 
-  anyService.hybridRetrieve = async (vectorQuery: string, lexicalQuery: string) => {
+  harness.hybridRetrieve = async (vectorQuery: string, lexicalQuery: string) => {
     capturedVector = vectorQuery;
     capturedLexical = lexicalQuery;
     return [CANDIDATE];
   };
-  anyService.rerank = async (rerankQuery: string, items: ScoredChunk[]) => {
+  harness.rerank = async (rerankQuery: string, items: ScoredChunk[]) => {
     capturedRerank = rerankQuery;
     return items;
   };
-  anyService.applySmartCutoff = (items: ScoredChunk[]) => items;
-  anyService.expand = async () => [];
+  harness.applySmartCutoff = (items: ScoredChunk[]) => items;
+  harness.expand = async () => [];
 
   await service.buildContextPack('fallback query', {
     vectorQuery: 'vector only',
@@ -61,27 +76,70 @@ test('SearchService 应按通道路由 query', async () => {
 
 test('未传 channels 时应保持旧路由行为', async () => {
   const service = new SearchService('search-query-routing-default-test', '/tmp/project');
-  const anyService = service as any;
+  const harness = service as unknown as SearchServiceHarness;
 
   let capturedVector = '';
   let capturedLexical = '';
   let capturedRerank = '';
 
-  anyService.hybridRetrieve = async (vectorQuery: string, lexicalQuery: string) => {
+  harness.hybridRetrieve = async (vectorQuery: string, lexicalQuery: string) => {
     capturedVector = vectorQuery;
     capturedLexical = lexicalQuery;
     return [CANDIDATE];
   };
-  anyService.rerank = async (rerankQuery: string, items: ScoredChunk[]) => {
+  harness.rerank = async (rerankQuery: string, items: ScoredChunk[]) => {
     capturedRerank = rerankQuery;
     return items;
   };
-  anyService.applySmartCutoff = (items: ScoredChunk[]) => items;
-  anyService.expand = async () => [];
+  harness.applySmartCutoff = (items: ScoredChunk[]) => items;
+  harness.expand = async () => [];
 
   await service.buildContextPack('legacy query');
 
   assert.equal(capturedVector, 'legacy query');
   assert.equal(capturedLexical, 'legacy query');
   assert.equal(capturedRerank, 'legacy query');
+});
+
+test('RRF 双路命中时应保留 both 来源', () => {
+  const service = new SearchService(
+    'search-source-both-test',
+    '/tmp/project',
+  ) as unknown as SearchServiceHarness;
+
+  const fused = service.fuse(
+    [{ ...CANDIDATE, source: 'vector', _rank: 0 }],
+    [{ ...CANDIDATE, source: 'lexical', _rank: 0 }],
+  );
+
+  assert.equal(fused.length, 1);
+  assert.equal(fused[0].source, 'both');
+});
+
+test('SearchService.close 应释放已初始化资源', async () => {
+  const service = new SearchService(
+    'search-close-test',
+    '/tmp/project',
+  ) as unknown as SearchServiceHarness;
+  let dbClosed = false;
+  let vectorClosed = false;
+
+  service.db = {
+    close: () => {
+      dbClosed = true;
+    },
+  };
+  service.vectorStore = {
+    close: async () => {
+      vectorClosed = true;
+    },
+  };
+
+  await service.close();
+
+  assert.equal(dbClosed, true);
+  assert.equal(vectorClosed, true);
+  assert.equal(service.db, null);
+  assert.equal(service.vectorStore, null);
+  assert.equal(service.indexer, null);
 });

@@ -135,8 +135,14 @@ test('include_languages 直接透传', () => {
   assert.deepEqual(result, ['typescript', 'python']);
 });
 
-test('仅 exclude_languages 归一化返回 undefined', () => {
-  assert.equal(normalizeLanguageFilter({ exclude_languages: ['markdown'] }), undefined);
+test('仅 exclude_languages 归一化为排除后的语言白名单', () => {
+  const result = normalizeLanguageFilter({ exclude_languages: ['markdown', 'json'] });
+
+  assert.ok(result);
+  assert.ok(result.includes('typescript'));
+  assert.ok(result.includes('python'));
+  assert.ok(!result.includes('markdown'));
+  assert.ok(!result.includes('json'));
 });
 
 // ─── WHERE 子句构造 ───

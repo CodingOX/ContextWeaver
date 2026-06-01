@@ -385,6 +385,17 @@ export async function getVectorStore(projectId: string, vectorDim = 1024): Promi
 }
 
 /**
+ * 关闭并移除单个项目的 VectorStore 缓存。
+ */
+export async function closeVectorStore(projectId: string): Promise<void> {
+  const store = vectorStores.get(projectId);
+  if (store) {
+    await store.close();
+    vectorStores.delete(projectId);
+  }
+}
+
+/**
  * 关闭所有 VectorStore 连接
  */
 export async function closeAllVectorStores(): Promise<void> {

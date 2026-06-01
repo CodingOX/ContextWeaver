@@ -13,8 +13,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
+import { DEFAULT_ENV_TEMPLATE } from '../../config.js';
 import { generateProjectId, initDb } from '../../db/index.js';
-import { getAllowedLanguages, getCodeLanguages, isKnownLanguage } from '../../scanner/language.js';
+import { getAllowedLanguages, getCodeLanguages } from '../../scanner/language.js';
 // 注意：SearchService 和 scan 改为延迟导入，避免在 MCP 启动时就加载 native 模块
 import { recordRetrievalEvent } from '../../search/feedbackLoop.js';
 import { createFilePathFilter, normalizeFilePathFilterConfig } from '../../search/pathFilter.js';
@@ -186,8 +187,8 @@ export function normalizeLanguageFilter(config: LanguageFilterConfig): string[] 
     // 显式白名单
     result = [...include_languages];
   } else {
-    // 仅有 exclude_languages 时，返回 undefined（SearchService 会做反向过滤）
-    return undefined;
+    // 仅有 exclude_languages 时，转换成正向白名单，确保向量、FTS、扩展阶段同口径过滤。
+    result = [...getAllowedLanguages(), 'unknown'];
   }
 
   // 叠加 exclude_languages（黑名单排除）
@@ -240,30 +241,7 @@ async function ensureDefaultEnvFile(): Promise<void> {
   }
 
   // 写入默认配置
-  const defaultEnvContent = `# ContextWeaver 示例环境变量配置文件
-
-# Embedding API 配置（必需）
-# 多 key（可选，逗号分隔）。与 EMBEDDINGS_API_KEY 兼容；同时配置时优先使用本项。
-# EMBEDDINGS_API_KEYS=key-1,key-2
-EMBEDDINGS_API_KEY=your-api-key-here
-EMBEDDINGS_BASE_URL=https://api.siliconflow.cn/v1/embeddings
-EMBEDDINGS_MODEL=BAAI/bge-m3
-EMBEDDINGS_MAX_CONCURRENCY=10
-EMBEDDINGS_DIMENSIONS=1024
-
-# Reranker 配置（必需）
-# 多 key（可选，逗号分隔）。与 RERANK_API_KEY 兼容；同时配置时优先使用本项。
-# RERANK_API_KEYS=key-1,key-2
-RERANK_API_KEY=your-api-key-here
-RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
-RERANK_MODEL=BAAI/bge-reranker-v2-m3
-RERANK_TOP_N=20
-
-# 索引忽略模式（可选，逗号分隔，默认已包含常见忽略项）
-# IGNORE_PATTERNS=.venv,node_modules
-`;
-
-  fs.writeFileSync(envFile, defaultEnvContent);
+  fs.writeFileSync(envFile, DEFAULT_ENV_TEMPLATE);
   logger.info({ envFile }, '已创建默认 .env 配置文件');
 }
 
@@ -350,7 +328,7 @@ export async function handleCodebaseRetrieval(
   args: CodebaseRetrievalInput,
   configOverride: Partial<SearchConfig> = ZEN_CONFIG_OVERRIDE,
   onProgress?: ProgressCallback,
-): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const {
     repo_path,
     information_request,
@@ -444,114 +422,119 @@ export async function handleCodebaseRetrieval(
 
   // 5. 创建 SearchService 实例（使用 Zen Config）
   const service = new SearchService(projectId, repo_path, configOverride);
-  await service.init();
-  logger.debug('SearchService 初始化完成');
 
-  // 6. 执行搜索
-  const contextPack = await service.buildContextPack(channels.rerankQuery, channels, {
-    filePathFilter,
-    languageFilter,
-  });
+  try {
+    await service.init();
+    logger.debug('SearchService 初始化完成');
 
-  // 详细日志：seeds 信息
-  if (contextPack.seeds.length > 0) {
+    // 6. 执行搜索
+    const contextPack = await service.buildContextPack(channels.rerankQuery, channels, {
+      filePathFilter,
+      languageFilter,
+    });
+
+    // 详细日志：seeds 信息
+    if (contextPack.seeds.length > 0) {
+      logger.info(
+        {
+          seeds: contextPack.seeds.map((s) => ({
+            file: s.filePath,
+            chunk: s.chunkIndex,
+            score: s.score.toFixed(4),
+            source: s.source,
+          })),
+        },
+        'MCP 搜索 seeds',
+      );
+    } else {
+      logger.warn('MCP 搜索无 seeds 命中');
+    }
+
+    // 详细日志：扩展结果
+    if (contextPack.expanded.length > 0) {
+      logger.debug(
+        {
+          expandedCount: contextPack.expanded.length,
+          expanded: contextPack.expanded.slice(0, 5).map((e) => ({
+            file: e.filePath,
+            chunk: e.chunkIndex,
+            score: e.score.toFixed(4),
+          })),
+        },
+        'MCP 扩展结果 (前5)',
+      );
+    }
+
+    // 详细日志：打包后的文件段落
     logger.info(
       {
-        seeds: contextPack.seeds.map((s) => ({
-          file: s.filePath,
-          chunk: s.chunkIndex,
-          score: s.score.toFixed(4),
-          source: s.source,
-        })),
-      },
-      'MCP 搜索 seeds',
-    );
-  } else {
-    logger.warn('MCP 搜索无 seeds 命中');
-  }
-
-  // 详细日志：扩展结果
-  if (contextPack.expanded.length > 0) {
-    logger.debug(
-      {
+        seedCount: contextPack.seeds.length,
         expandedCount: contextPack.expanded.length,
-        expanded: contextPack.expanded.slice(0, 5).map((e) => ({
-          file: e.filePath,
-          chunk: e.chunkIndex,
-          score: e.score.toFixed(4),
+        fileCount: contextPack.files.length,
+        totalSegments: contextPack.files.reduce((acc, f) => acc + f.segments.length, 0),
+        files: contextPack.files.map((f) => ({
+          path: f.filePath,
+          segments: f.segments.length,
+          lines: f.segments.map((s) => `L${s.startLine}-${s.endLine}`),
         })),
+        timingMs: contextPack.debug?.timingMs,
       },
-      'MCP 扩展结果 (前5)',
+      'MCP codebase-retrieval 完成',
     );
-  }
 
-  // 详细日志：打包后的文件段落
-  logger.info(
-    {
-      seedCount: contextPack.seeds.length,
-      expandedCount: contextPack.expanded.length,
-      fileCount: contextPack.files.length,
-      totalSegments: contextPack.files.reduce((acc, f) => acc + f.segments.length, 0),
-      files: contextPack.files.map((f) => ({
-        path: f.filePath,
-        segments: f.segments.length,
-        lines: f.segments.map((s) => `L${s.startLine}-${s.endLine}`),
-      })),
-      timingMs: contextPack.debug?.timingMs,
-    },
-    'MCP codebase-retrieval 完成',
-  );
-
-  // 7. 写入隐式反馈事件（P4）
-  try {
-    const db = initDb(projectId);
+    // 7. 写入隐式反馈事件（P4）
     try {
-      const feedback = recordRetrievalEvent(db, {
-        query: information_request,
-        technicalTerms: technical_terms,
-        seeds: contextPack.seeds.map((seed) => ({
-          chunkId: seed.record.chunk_id,
-          filePath: seed.filePath,
-          chunkIndex: seed.chunkIndex,
-          score: seed.score,
-          source: seed.source,
-        })),
-      });
+      const db = initDb(projectId);
+      try {
+        const feedback = recordRetrievalEvent(db, {
+          query: information_request,
+          technicalTerms: technical_terms,
+          seeds: contextPack.seeds.map((seed) => ({
+            chunkId: seed.record.chunk_id,
+            filePath: seed.filePath,
+            chunkIndex: seed.chunkIndex,
+            score: seed.score,
+            source: seed.source,
+          })),
+        });
 
-      if (feedback.inferredSignals.length > 0) {
-        logger.info(
-          {
-            eventId: feedback.eventId,
-            inferredSignals: feedback.inferredSignals.map((signal) => ({
-              type: signal.type,
-              weight: signal.weight,
-              file: signal.targetFilePath,
-            })),
-          },
-          'MCP 隐式反馈信号已记录',
-        );
+        if (feedback.inferredSignals.length > 0) {
+          logger.info(
+            {
+              eventId: feedback.eventId,
+              inferredSignals: feedback.inferredSignals.map((signal) => ({
+                type: signal.type,
+                weight: signal.weight,
+                file: signal.targetFilePath,
+              })),
+            },
+            'MCP 隐式反馈信号已记录',
+          );
+        }
+      } finally {
+        db.close();
       }
-    } finally {
-      db.close();
+    } catch (err) {
+      const error = err as { message?: string };
+      logger.warn({ error: error.message }, '写入隐式反馈失败（不影响主流程）');
     }
-  } catch (err) {
-    const error = err as { message?: string };
-    logger.warn({ error: error.message }, '写入隐式反馈失败（不影响主流程）');
-  }
 
-  // 8. 格式化输出
-  let rawCodeBlocks: RawCodeBlock[] = [];
-  if (responseMode === 'raw') {
-    rawCodeBlocks = await collectRawCodeBlocks(projectId, contextPack.seeds, rawTopN);
-  }
+    // 8. 格式化输出
+    let rawCodeBlocks: RawCodeBlock[] = [];
+    if (responseMode === 'raw') {
+      rawCodeBlocks = await collectRawCodeBlocks(projectId, contextPack.seeds, rawTopN);
+    }
 
-  return formatMcpResponse(contextPack, {
-    responseMode,
-    rawTopN,
-    includeGlobs: normalizedFilterConfig.includeGlobs,
-    excludeGlobs: normalizedFilterConfig.excludeGlobs,
-    rawCodeBlocks,
-  });
+    return formatMcpResponse(contextPack, {
+      responseMode,
+      rawTopN,
+      includeGlobs: normalizedFilterConfig.includeGlobs,
+      excludeGlobs: normalizedFilterConfig.excludeGlobs,
+      rawCodeBlocks,
+    });
+  } finally {
+    await service.close();
+  }
 }
 
 // 响应格式化
@@ -841,6 +824,7 @@ function offsetToLine(content: string, offset: number): number {
  */
 function formatEnvMissingResponse(missingVars: string[]): {
   content: Array<{ type: 'text'; text: string }>;
+  isError: true;
 } {
   const configPath = '~/.contextweaver/.env';
 
@@ -881,5 +865,6 @@ RERANK_API_KEYS=your-api-key-here
         text,
       },
     ],
+    isError: true,
   };
 }

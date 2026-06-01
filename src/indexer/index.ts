@@ -15,8 +15,8 @@ import { batchUpdateVectorIndexHash, clearVectorIndexHash } from '../db/index.js
 import type { ProcessResult } from '../scanner/processor.js';
 import {
   batchDeleteFileChunksFts,
-  type ChunkFtsDoc,
   batchUpsertChunkFts,
+  type ChunkFtsDoc,
   isChunksFtsInitialized,
 } from '../search/fts.js';
 import { logger } from '../utils/logger.js';
@@ -240,10 +240,7 @@ export class Indexer {
     // 避免这些文件在下一轮被持续判定为“需要自愈”
     if (noChunkSettled.length > 0) {
       batchUpdateVectorIndexHash(db, noChunkSettled);
-      logger.debug(
-        { count: noChunkSettled.length },
-        '无可索引 chunk，标记向量索引状态为已收敛',
-      );
+      logger.debug({ count: noChunkSettled.length }, '无可索引 chunk，标记向量索引状态为已收敛');
     }
 
     // 批量处理需要索引的文件
@@ -507,6 +504,16 @@ export async function getIndexer(projectId: string, vectorDim = 1024): Promise<I
     indexers.set(projectId, indexer);
   }
   return indexer;
+}
+
+/**
+ * 释放单个项目的 Indexer 缓存。
+ *
+ * Indexer 当前不持有显式 close 的 native 句柄，但检索路径会按项目创建实例；
+ * 主动删除缓存可避免长时间运行的 MCP 进程按项目无限增长。
+ */
+export function closeIndexer(projectId: string): void {
+  indexers.delete(projectId);
 }
 
 /**

@@ -118,7 +118,7 @@ export interface BuildContextPackOptions {
 // ===========================================
 
 /** Chunk 来源类型 */
-export type ChunkSource = 'vector' | 'lexical' | 'neighbor' | 'breadcrumb' | 'import';
+export type ChunkSource = 'vector' | 'lexical' | 'both' | 'neighbor' | 'breadcrumb' | 'import';
 
 /** 带得分的 Chunk */
 export interface ScoredChunk {
