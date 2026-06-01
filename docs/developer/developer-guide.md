@@ -90,7 +90,7 @@ bash scripts/publish-plugins.sh --version <x.y.z>
 - 不传 `--version`：按各插件目录下 `package.json` 的 version 发布
 
 > provenance 默认是 auto：本地环境自动关闭，CI（含 OIDC）自动开启。
-> 发布顺序与 CI 一致：单语言包 -> `lang-all` -> 兼容包（`lang-ts21`/`lang-ts22`）。
+> 发布顺序与 CI 一致：单语言包 -> `lang-all`。
 >
 > 发版补充文档：
 > - 全量本地手动发版：`docs/release/local-manual-release.md`

@@ -81,7 +81,6 @@ bash scripts/publish-plugins.sh --version 0.0.8
 
 1. 单语言插件：`lang-typescript`、`lang-kotlin`、`lang-csharp`、`lang-cpp`、`lang-java`、`lang-ruby`、`lang-c`、`lang-php`、`lang-rust`、`lang-swift`
 2. 聚合插件：`lang-all`
-3. 兼容插件：`lang-ts21`、`lang-ts22`
 
 ## 5. 主包发布（手动）
 
