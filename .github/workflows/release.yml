@@ -52,7 +52,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: pnpm
 
-      - name: Upgrade npm for Trusted Publishing (OIDC)
+      - name: Upgrade npm for provenance publishing
         run: |
           npm i -g npm@^11.5.1
           npm -v
@@ -110,6 +110,47 @@ jobs:
           set -euo pipefail
           VER="${{ steps.rel.outputs.ver }}"
 
+          PACKAGE_NAMES=(
+            "@alistar.max/contextweaver-lang-typescript"
+            "@alistar.max/contextweaver-lang-kotlin"
+            "@alistar.max/contextweaver-lang-csharp"
+            "@alistar.max/contextweaver-lang-cpp"
+            "@alistar.max/contextweaver-lang-java"
+            "@alistar.max/contextweaver-lang-ruby"
+            "@alistar.max/contextweaver-lang-c"
+            "@alistar.max/contextweaver-lang-php"
+            "@alistar.max/contextweaver-lang-rust"
+            "@alistar.max/contextweaver-lang-swift"
+            "@alistar.max/contextweaver-lang-all"
+            "@alistar.max/contextweaver-lang-ts21"
+            "@alistar.max/contextweaver-lang-ts22"
+            "@alistar.max/contextweaver"
+          )
+
+          echo "Preflight: verify npm publish identity"
+          npm whoami
+
+          echo "Preflight: verify scope write access"
+          if ! npm access list packages @alistar.max >/tmp/npm-scope-packages.json 2>/tmp/npm-scope-packages.err; then
+            echo "npm access list packages @alistar.max failed"
+            cat /tmp/npm-scope-packages.err
+            echo "当前 NPM_TOKEN 对 @alistar.max scope 没有可见/写入权限，无法安全继续发布。"
+            exit 1
+          fi
+
+          for pkg in "${PACKAGE_NAMES[@]}"; do
+            if npm view "$pkg@$VER" version >/dev/null 2>&1; then
+              echo "Preflight: $pkg@$VER already exists"
+              continue
+            fi
+
+            if ! npm access list collaborators "$pkg" >/tmp/npm-collab.json 2>/tmp/npm-collab.err; then
+              echo "Preflight: $pkg has no collaborator metadata visible to current identity"
+              cat /tmp/npm-collab.err
+              echo "如果这是首次发布的新包，请先在 npm 侧确认 NPM_TOKEN 允许创建/写入该包。"
+            fi
+          done
+
           publish_if_needed() {
             local PKG="$1"
             local DIR="$2"
@@ -121,11 +162,11 @@ jobs:
 
             echo "Publishing $PKG@$VER from $DIR"
             if [ "$DIR" = "." ]; then
-              npm publish --no-git-checks --access public --provenance
+              npm publish --access public --provenance
             else
               (
                 cd "$DIR"
-                npm publish --no-git-checks --access public --provenance
+                npm publish --access public --provenance
               )
             fi
           }
@@ -147,6 +188,8 @@ jobs:
           publish_if_needed "@alistar.max/contextweaver-lang-ts22" "packages/lang-ts22"
 
           publish_if_needed "@alistar.max/contextweaver" "."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: startsWith(steps.rel.outputs.tag, 'v')
