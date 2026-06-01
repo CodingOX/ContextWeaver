@@ -283,6 +283,8 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   'bower_components',
   '.venv',
   'venv', // Python 虚拟环境
+  'env', // 常见本地虚拟环境目录
+  '.env', // 根环境变量文件
   '.env.*', // 环境变量文件 (.env.local, .env.production 等)
 
   // --- 2. 锁文件 (Token 杀手，且语义密度极低) ---
@@ -290,6 +292,7 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   'yarn.lock',
   'pnpm-lock.yaml',
   'bun.lockb',
+  'Pipfile.lock',
   'poetry.lock',
   'Gemfile.lock',
   'composer.lock',
@@ -302,6 +305,11 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   '.idea',
   '.vscode',
   '.vs',
+  '*.suo',
+  '*.user',
+  '.classpath',
+  '.project',
+  '.settings',
 
   // --- 4. 构建产物与缓存 ---
   // 通用构建输出
@@ -309,6 +317,7 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   'build',
   'out',
   'target',
+  'obj',
   // 编译产物
   '*.pyc',
   '*.pyo',
@@ -336,9 +345,16 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   '__pycache__',
   '.pytest_cache',
   '.mypy_cache',
+  '.ruff_cache',
   '.tox',
   '.eggs',
   '*.egg-info',
+  '.gradle',
+  '.terraform',
+  '.serverless',
+  '.vercel',
+  '.netlify',
+  '.firebase',
 
   // --- 5. 纯噪音文件 (无文本语义) ---
   // 压缩文件与 SourceMap
