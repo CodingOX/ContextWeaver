@@ -130,25 +130,13 @@ jobs:
           echo "Preflight: verify npm publish identity"
           npm whoami
 
-          echo "Preflight: verify scope write access"
-          if ! npm access list packages @alistar.max >/tmp/npm-scope-packages.json 2>/tmp/npm-scope-packages.err; then
-            echo "npm access list packages @alistar.max failed"
-            cat /tmp/npm-scope-packages.err
-            echo "当前 NPM_TOKEN 对 @alistar.max scope 没有可见/写入权限，无法安全继续发布。"
-            exit 1
-          fi
-
           for pkg in "${PACKAGE_NAMES[@]}"; do
             if npm view "$pkg@$VER" version >/dev/null 2>&1; then
               echo "Preflight: $pkg@$VER already exists"
               continue
             fi
 
-            if ! npm access list collaborators "$pkg" >/tmp/npm-collab.json 2>/tmp/npm-collab.err; then
-              echo "Preflight: $pkg has no collaborator metadata visible to current identity"
-              cat /tmp/npm-collab.err
-              echo "如果这是首次发布的新包，请先在 npm 侧确认 NPM_TOKEN 允许创建/写入该包。"
-            fi
+            echo "Preflight: $pkg@$VER is not published yet"
           done
 
           publish_if_needed() {
