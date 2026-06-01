@@ -1,17 +1,13 @@
 import type { LanguageRuntime } from './LanguageRuntime.js';
 
-export const CORE_PLUGIN_CANDIDATES = [
-  '@alistar.max/contextweaver-lang-csharp',
-] as const;
+export const CORE_PLUGIN_CANDIDATES = ['@alistar.max/contextweaver-lang-csharp'] as const;
 
 export const LEGACY_PLUGIN_CANDIDATES = [
   '@alistar.max/contextweaver-lang-ts21',
   '@alistar.max/contextweaver-lang-ts22',
 ] as const;
 
-export const DEFAULT_PLUGIN_CANDIDATES = [
-  ...CORE_PLUGIN_CANDIDATES,
-] as const;
+export const DEFAULT_PLUGIN_CANDIDATES = [...CORE_PLUGIN_CANDIDATES] as const;
 
 type RuntimeFactory = () => unknown;
 
@@ -38,7 +34,11 @@ export async function discoverPluginPackages(
   const runtimes: LanguageRuntime[] = [];
 
   for (const candidate of candidates) {
-    const runtime = await loadRuntime(candidate, logger, options.suppressMissingModuleError ?? false);
+    const runtime = await loadRuntime(
+      candidate,
+      logger,
+      options.suppressMissingModuleError ?? false,
+    );
     if (runtime) {
       runtimes.push(runtime);
     }

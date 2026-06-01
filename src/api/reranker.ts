@@ -89,9 +89,7 @@ export class RerankerClient {
     this.config = config || getRerankerConfig();
 
     const configuredApiKeys = Array.isArray(this.config.apiKeys)
-      ? this.config.apiKeys
-          .map((key) => key?.trim())
-          .filter((key): key is string => Boolean(key))
+      ? this.config.apiKeys.map((key) => key?.trim()).filter((key): key is string => Boolean(key))
       : [];
 
     const fallbackApiKey = this.config.apiKey.trim();

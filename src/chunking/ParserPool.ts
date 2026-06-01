@@ -5,7 +5,7 @@
  * 基于 RuntimeRegistry 调度运行时。
  *
  */
-import Parser from 'tree-sitter';
+import type Parser from 'tree-sitter';
 import { BuiltinRuntimeTs25 } from './runtime/BuiltinRuntimeTs25.js';
 import { discoverPluginPackages } from './runtime/PluginLoader.js';
 import { RuntimeRegistry } from './runtime/RuntimeRegistry.js';

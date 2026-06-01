@@ -361,8 +361,16 @@ export function getFeedbackSummary(
 ): FeedbackSummary {
   ensureFeedbackTables(db);
 
-  const days = Number.isFinite(options.days) && (options.days || 0) > 0 ? Math.floor(options.days!) : 7;
-  const top = Number.isFinite(options.top) && (options.top || 0) > 0 ? Math.floor(options.top!) : 10;
+  const requestedDays = options.days;
+  const requestedTop = options.top;
+  const days =
+    typeof requestedDays === 'number' && Number.isFinite(requestedDays) && requestedDays > 0
+      ? Math.floor(requestedDays)
+      : 7;
+  const top =
+    typeof requestedTop === 'number' && Number.isFinite(requestedTop) && requestedTop > 0
+      ? Math.floor(requestedTop)
+      : 10;
   const nowMs = options.nowMs ?? Date.now();
   const cutoff = nowMs - days * 24 * 60 * 60 * 1000;
 
@@ -374,7 +382,9 @@ export function getFeedbackSummary(
 
   const zeroHitEvents = (
     db
-      .prepare('SELECT COUNT(*) as c FROM retrieval_events WHERE created_at >= ? AND seed_count = 0')
+      .prepare(
+        'SELECT COUNT(*) as c FROM retrieval_events WHERE created_at >= ? AND seed_count = 0',
+      )
       .get(cutoff) as { c: number }
   ).c;
 

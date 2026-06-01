@@ -87,10 +87,7 @@ function normalizeCase(raw: unknown, index: number): AutoTuneCase {
   return {
     id: ensureString(raw.id, `id (line ${index + 1})`),
     query: ensureString(raw.query, `query (line ${index + 1})`),
-    vectorRetrieved: ensureStringArray(
-      raw.vectorRetrieved,
-      `vectorRetrieved (line ${index + 1})`,
-    ),
+    vectorRetrieved: ensureStringArray(raw.vectorRetrieved, `vectorRetrieved (line ${index + 1})`),
     lexicalRetrieved: ensureStringArray(
       raw.lexicalRetrieved,
       `lexicalRetrieved (line ${index + 1})`,

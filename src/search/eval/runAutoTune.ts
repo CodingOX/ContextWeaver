@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { loadAutoTuneDataset } from './autoTuneDataset.js';
 import { runAutoTune } from './autoTune.js';
+import { loadAutoTuneDataset } from './autoTuneDataset.js';
 import type { AutoTuneGrid } from './types.js';
 
 interface CliOptions {
@@ -125,7 +125,9 @@ function formatResult(datasetPath: string, result: ReturnType<typeof runAutoTune
   lines.push(`Target        : ${result.target}`);
   lines.push(`K Values      : ${result.kValues.join(',')}`);
   lines.push(`Candidates    : ${result.totalCandidates}`);
-  lines.push(`Best          : wVec=${result.best.config.wVec}, wLex=${result.best.config.wLex}, rrfK0=${result.best.config.rrfK0}, fusedTopM=${result.best.config.fusedTopM}`);
+  lines.push(
+    `Best          : wVec=${result.best.config.wVec}, wLex=${result.best.config.wLex}, rrfK0=${result.best.config.rrfK0}, fusedTopM=${result.best.config.fusedTopM}`,
+  );
   lines.push(`Best Score    : ${result.best.targetScore.toFixed(6)}`);
   lines.push(`Best MRR      : ${result.best.summary.mrr.toFixed(6)}`);
 

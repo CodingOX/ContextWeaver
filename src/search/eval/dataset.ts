@@ -71,9 +71,7 @@ function parseJsonl(content: string): unknown[] {
     try {
       return JSON.parse(line);
     } catch (error) {
-      throw new Error(
-        `JSONL 解析失败（第 ${lineIndex + 1} 行）：${(error as Error).message}`,
-      );
+      throw new Error(`JSONL 解析失败（第 ${lineIndex + 1} 行）：${(error as Error).message}`);
     }
   });
 }

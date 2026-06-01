@@ -15,7 +15,10 @@ export function buildQueryChannels(input: BuildQueryChannelsInput): QueryChannel
   const informationRequest = input.informationRequest.trim();
   const technicalTerms = normalizeTechnicalTerms(input.technicalTerms);
 
-  const lexicalQuery = [technicalTerms.join(' '), informationRequest].filter(Boolean).join(' ').trim();
+  const lexicalQuery = [technicalTerms.join(' '), informationRequest]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
   const rerankQuery = [informationRequest, ...technicalTerms].filter(Boolean).join(' ').trim();
 
   return {

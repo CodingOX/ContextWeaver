@@ -43,7 +43,10 @@ export async function inspectChunkIndexConsistency(
   try {
     initChunksFts(db);
 
-    const [vectorIds, ftsIds] = await Promise.all([vectorStore.getAllChunkIds(), getFtsChunkIds(db)]);
+    const [vectorIds, ftsIds] = await Promise.all([
+      vectorStore.getAllChunkIds(),
+      getFtsChunkIds(db),
+    ]);
 
     return buildChunkIndexConsistencyReport(vectorIds, ftsIds);
   } finally {

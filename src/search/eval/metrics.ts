@@ -71,7 +71,10 @@ export function recallAtK(
   return hits / relevantSet.size;
 }
 
-export function reciprocalRank(rankedIds: readonly string[], relevantIds: Iterable<string>): number {
+export function reciprocalRank(
+  rankedIds: readonly string[],
+  relevantIds: Iterable<string>,
+): number {
   const relevantSet = toRelevantSet(relevantIds);
 
   if (relevantSet.size === 0) {
