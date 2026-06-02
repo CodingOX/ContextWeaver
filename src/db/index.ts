@@ -224,7 +224,8 @@ export function batchUpsert(db: Database.Database, files: FileMeta[]): void {
       mtime = excluded.mtime,
       size = excluded.size,
       content = excluded.content,
-      language = excluded.language
+      language = excluded.language,
+      vector_index_hash = NULL
   `);
 
   const transaction = db.transaction((items: FileMeta[]) => {
@@ -299,6 +300,16 @@ export function batchDelete(db: Database.Database, paths: string[]): void {
  */
 export function clear(db: Database.Database): void {
   db.exec('DELETE FROM files');
+  try {
+    db.exec('DELETE FROM files_fts');
+  } catch {
+    // FTS 表可能尚未初始化，忽略即可
+  }
+  try {
+    db.exec('DELETE FROM chunks_fts');
+  } catch {
+    // FTS 表可能尚未初始化，忽略即可
+  }
 }
 
 // ===========================================

@@ -10,6 +10,10 @@
 import type Database from 'better-sqlite3';
 import { logger } from '../utils/logger.js';
 
+function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 // FTS Tokenizer 探测
 
 /** 支持的 tokenizer 类型 */
@@ -344,7 +348,7 @@ export function searchChunksFts(
   // 语言过滤子查询：通过 files 表关联实现（chunks_fts 无 language 列）
   const langSubquery =
     languages && languages.length > 0
-      ? `AND file_path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${l}'`).join(', ')}))`
+      ? `AND file_path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${escapeSqlString(l)}'`).join(', ')}))`
       : '';
 
   const runQuery = (qStr: string, queryLimit: number): ChunkFtsResult[] => {
@@ -652,7 +656,7 @@ export function searchFilesFts(
   // 语言过滤子查询：通过 files 表关联实现（files_fts 无 language 列）
   const langSubquery =
     languages && languages.length > 0
-      ? `AND path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${l}'`).join(', ')}))`
+      ? `AND path IN (SELECT path FROM files WHERE language IN (${languages.map((l) => `'${escapeSqlString(l)}'`).join(', ')}))`
       : '';
 
   // 辅助：执行 SQL 查询

@@ -5,11 +5,13 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   batchUpsert,
+  clear,
   closeDb,
   getFilesNeedingVectorIndex,
   initDb,
   type FileMeta,
 } from '../../src/db/index.js';
+import { initChunksFts, initFilesFts } from '../../src/search/fts.js';
 import { closeAllIndexers, getIndexer } from '../../src/indexer/index.js';
 import type { ProcessResult } from '../../src/scanner/processor.js';
 import { closeAllVectorStores } from '../../src/vectorStore/index.js';
@@ -67,6 +69,43 @@ test('无 chunk 文件应在索引后收敛，避免重复进入 healing 集合'
     closeDb(db);
     closeAllIndexers();
     await closeAllVectorStores();
+    await fs.rm(projectDir(projectId), { recursive: true, force: true });
+  }
+});
+
+test('clear 应同时清理 files 与 FTS 表', async () => {
+  const projectId = `clear-fts-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const db = initDb(projectId);
+
+  try {
+    initFilesFts(db);
+    initChunksFts(db);
+
+    batchUpsert(db, [
+      {
+        path: 'src/a.ts',
+        hash: 'h1',
+        mtime: Date.now(),
+        size: 10,
+        content: 'export const a = 1;',
+        language: 'typescript',
+        vectorIndexHash: null,
+      },
+    ]);
+
+    clear(db);
+
+    const filesCount = db.prepare('SELECT COUNT(*) as c FROM files').get() as { c: number };
+    const filesFtsCount = db.prepare('SELECT COUNT(*) as c FROM files_fts').get() as { c: number };
+    const chunksFtsCount = db.prepare('SELECT COUNT(*) as c FROM chunks_fts').get() as {
+      c: number;
+    };
+
+    assert.equal(filesCount.c, 0);
+    assert.equal(filesFtsCount.c, 0);
+    assert.equal(chunksFtsCount.c, 0);
+  } finally {
+    closeDb(db);
     await fs.rm(projectDir(projectId), { recursive: true, force: true });
   }
 });

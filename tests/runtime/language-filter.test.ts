@@ -161,6 +161,11 @@ test('buildLanguageWhereClause 多语言', () => {
   assert.equal(result, "language IN ('typescript', 'python')");
 });
 
+test('buildLanguageWhereClause 应转义单引号', () => {
+  const result = buildLanguageWhereClause(["ts' OR 1=1 --"]);
+  assert.equal(result, "language = 'ts'' OR 1=1 --'");
+});
+
 // ─── FTS 语言过滤（chunks_fts） ───
 
 test('searchChunksFts 无 languages 参数时行为不变（零回归）', () => {
@@ -293,6 +298,44 @@ test('searchFilesFts 语言过滤排除非目标语言', () => {
     const mdOnly = searchFilesFts(db, 'UserService', 10, ['markdown']);
     assert.equal(mdOnly.length, 1);
     assert.equal(mdOnly[0].path, 'docs/guide.md');
+  } finally {
+    db.close();
+  }
+});
+
+test('searchChunksFts 语言过滤值含单引号时不应破坏 SQL', () => {
+  const projectId = `lang-filter-chunk-quote-${Date.now()}`;
+  const db = initDb(projectId);
+  try {
+    initChunksFts(db);
+    batchUpsertChunkFts(db, [
+      {
+        chunkId: 'src/a.ts#h#0',
+        filePath: 'src/a.ts',
+        chunkIndex: 0,
+        symbolTokens: 'AuthService',
+        breadcrumb: 'src/a.ts > class AuthService',
+        body: 'export class AuthService {}',
+        comments: '',
+      },
+    ]);
+
+    const results = searchChunksFts(db, 'AuthService', 10, ["ts' OR 1=1 --"]);
+    assert.deepEqual(results, []);
+  } finally {
+    db.close();
+  }
+});
+
+test('searchFilesFts 语言过滤值含单引号时不应破坏 SQL', () => {
+  const projectId = `lang-filter-file-quote-${Date.now()}`;
+  const db = initDb(projectId);
+  try {
+    initFilesFts(db);
+    batchUpsertFileFts(db, [{ path: 'src/a.ts', content: 'export class AuthService {}' }]);
+
+    const results = searchFilesFts(db, 'AuthService', 10, ["ts' OR 1=1 --"]);
+    assert.deepEqual(results, []);
   } finally {
     db.close();
   }

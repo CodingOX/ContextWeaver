@@ -81,6 +81,21 @@ export class GraphExpander {
   }
 
   /**
+   * 释放当前项目持有的连接与缓存。
+   *
+   * GraphExpander 仅服务于单个 projectId，长驻进程必须显式回收，
+   * 否则 SQLite 连接与文件路径缓存会随着项目数量增长而累积。
+   */
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+    this.vectorStore = null;
+    this.allFilePaths = null;
+  }
+
+  /**
    * 扩展 seed chunks
    */
   async expand(seeds: ScoredChunk[], queryTokens?: Set<string>): Promise<ExpandResult> {
@@ -537,4 +552,25 @@ export async function getGraphExpander(
     expanders.set(projectId, expander);
   }
   return expander;
+}
+
+/**
+ * 关闭并移除单个项目的 GraphExpander。
+ */
+export function closeGraphExpander(projectId: string): void {
+  const expander = expanders.get(projectId);
+  if (expander) {
+    expander.close();
+    expanders.delete(projectId);
+  }
+}
+
+/**
+ * 关闭所有 GraphExpander 实例。
+ */
+export function closeAllGraphExpanders(): void {
+  for (const expander of expanders.values()) {
+    expander.close();
+  }
+  expanders.clear();
 }

@@ -167,6 +167,25 @@ export function validateLanguageWhitelist(languages?: string[]): void {
 }
 
 /**
+ * 校验并规范化 MCP 传入的仓库路径。
+ *
+ * 这里不接受相对路径，避免客户端借助当前工作目录歧义访问非目标目录。
+ */
+export function normalizeRepoPath(repoPath: string): string {
+  if (!path.isAbsolute(repoPath)) {
+    throw new Error('repo_path 必须是绝对路径');
+  }
+
+  const resolvedPath = path.resolve(repoPath);
+  const stat = fs.statSync(resolvedPath);
+  if (!stat.isDirectory()) {
+    throw new Error('repo_path 必须是存在的目录');
+  }
+
+  return resolvedPath;
+}
+
+/**
  * 归一化语言过滤参数为统一的 languageFilter 数组
  * @returns 归一化后的语言过滤列表，undefined 表示无语言过滤
  */
@@ -349,6 +368,8 @@ export async function handleCodebaseRetrieval(
   validateLanguageWhitelist(include_languages);
   validateLanguageWhitelist(exclude_languages);
 
+  const normalizedRepoPath = normalizeRepoPath(repo_path);
+
   const responseMode = response_mode ?? 'overview';
   const rawTopN = Math.min(Math.max(raw_top_n ?? DEFAULT_RAW_TOP_N, 1), MAX_RAW_TOP_N);
   const normalizedFilterConfig = normalizeFilePathFilterConfig({
@@ -366,7 +387,7 @@ export async function handleCodebaseRetrieval(
 
   logger.info(
     {
-      repo_path,
+      repo_path: normalizedRepoPath,
       information_request,
       technical_terms,
       responseMode,
@@ -397,10 +418,10 @@ export async function handleCodebaseRetrieval(
   resetRerankerClient();
 
   // 1. 生成项目 ID（与 CLI 保持一致：路径 + 目录创建时间）
-  const projectId = generateProjectId(repo_path);
+  const projectId = generateProjectId(normalizedRepoPath);
 
   // 2. 确保代码库已索引（自动初始化 + 增量更新）
-  await ensureIndexed(repo_path, projectId, onProgress);
+  await ensureIndexed(normalizedRepoPath, projectId, onProgress);
 
   // 3. 查询分通道
   const channels = buildQueryChannels({
@@ -426,7 +447,7 @@ export async function handleCodebaseRetrieval(
   const { SearchService } = await import('../../search/SearchService.js');
 
   // 5. 创建 SearchService 实例（使用 Zen Config）
-  const service = new SearchService(projectId, repo_path, configOverride);
+  const service = new SearchService(projectId, normalizedRepoPath, configOverride);
 
   try {
     await service.init();

@@ -46,13 +46,15 @@ export function buildLanguageWhereClause(languages?: string[]): string | undefin
     return undefined;
   }
 
+  const escapeSqlString = (value: string): string => value.replace(/'/g, "''");
+
   if (languages.length === 1) {
     // 单语言: language = 'typescript'
-    return `language = '${languages[0]}'`;
+    return `language = '${escapeSqlString(languages[0])}'`;
   }
 
   // 多语言: language IN ('typescript', 'javascript', 'python')
-  const escapedLangs = languages.map((lang) => `'${lang}'`).join(', ');
+  const escapedLangs = languages.map((lang) => `'${escapeSqlString(lang)}'`).join(', ');
   return `language IN (${escapedLangs})`;
 }
 
@@ -165,6 +167,8 @@ export class SearchService {
     this.indexer = null;
     closeIndexer(this.projectId);
     await closeVectorStore(this.projectId);
+    const { closeGraphExpander } = await import('./GraphExpander.js');
+    closeGraphExpander(this.projectId);
   }
 
   // 公开接口
@@ -441,11 +445,15 @@ export class SearchService {
     const allChunks: ScoredChunk[] = [];
     let totalChunks = 0;
     let skippedFiles = 0;
+    const filePaths = fileResults.map((item) => item.path);
+    const allFileChunksMap = await this.vectorStore?.getFilesChunks(filePaths);
+    if (!allFileChunksMap) {
+      return [];
+    }
 
     for (const { path: filePath, score: fileScore } of fileResults) {
       if (totalChunks >= this.config.lexTotalChunks) break;
-
-      const chunks = await this.vectorStore?.getFileChunks(filePath);
+      const chunks = allFileChunksMap.get(filePath);
       if (!chunks || chunks.length === 0) continue;
 
       // 对每个 chunk 计算 token overlap 得分

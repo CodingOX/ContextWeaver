@@ -171,3 +171,23 @@ test('importFilesPerSeed=0 时不应触发跨文件扩展结果', async () => {
   assert.deepEqual(result, []);
   assert.equal(getFileChunksCalled, 0, 'per-file limit 为 0 时不应读取导入文件 chunks');
 });
+
+test('GraphExpander.close 应释放内部引用', async () => {
+  const expander = new GraphExpander('graph-close-test', DEFAULT_CONFIG);
+
+  let closeCalled = 0;
+  (expander as any).db = {
+    close() {
+      closeCalled += 1;
+    },
+  };
+  (expander as any).vectorStore = {};
+  (expander as any).allFilePaths = new Set<string>(['src/a.ts']);
+
+  expander.close();
+
+  assert.equal(closeCalled, 1);
+  assert.equal((expander as any).db, null);
+  assert.equal((expander as any).vectorStore, null);
+  assert.equal((expander as any).allFilePaths, null);
+});

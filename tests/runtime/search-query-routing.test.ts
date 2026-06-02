@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { initDb } from '../../src/db/index.js';
+import { batchUpsertFileFts, initFilesFts } from '../../src/search/fts.js';
 import { SearchService } from '../../src/search/SearchService.js';
 import type { ScoredChunk } from '../../src/search/types.js';
 
@@ -142,4 +144,72 @@ test('SearchService.close 应释放已初始化资源', async () => {
   assert.equal(service.db, null);
   assert.equal(service.vectorStore, null);
   assert.equal(service.indexer, null);
+});
+
+test('files_fts 降级路径应批量获取 chunks，避免逐文件查询', async () => {
+  const projectId = `search-files-fts-batch-test-${Date.now()}`;
+  const db = initDb(projectId);
+  const service = new SearchService(
+    projectId,
+    '/tmp/project',
+  ) as unknown as SearchServiceHarness & {
+    config: { ftsTopKFiles: number; lexTotalChunks: number; lexChunksPerFile: number };
+    lexicalRetrieveFromFilesFts: (query: string, languageFilter?: string[]) => Promise<ScoredChunk[]>;
+  };
+
+  let batchCalls = 0;
+  let singleCalls = 0;
+
+  initFilesFts(db);
+  batchUpsertFileFts(db, [
+    { path: 'src/a.ts', content: 'match token' },
+    { path: 'src/b.ts', content: 'match token' },
+  ]);
+
+  service.db = db;
+  service.vectorStore = {
+    close: async () => {},
+    getFilesChunks: async (paths: string[]) => {
+      batchCalls++;
+      return new Map(
+        paths.map((filePath, idx) => [
+          filePath,
+          [
+            {
+              chunk_id: `${filePath}#hash#0`,
+              file_path: filePath,
+              file_hash: 'hash',
+              chunk_index: 0,
+              vector: [0],
+              display_code: idx === 0 ? 'match token' : 'other token',
+              vector_text: 'token',
+              language: 'typescript',
+              breadcrumb: `${filePath} > const demo`,
+              start_index: 0,
+              end_index: 10,
+              raw_start: 0,
+              raw_end: 10,
+              vec_start: 0,
+              vec_end: 10,
+            },
+          ],
+        ]),
+      );
+    },
+    getFileChunks: async () => {
+      singleCalls++;
+      return [];
+    },
+  } as unknown as { close: () => Promise<void> };
+
+  service.config.ftsTopKFiles = 10;
+  service.config.lexTotalChunks = 10;
+  service.config.lexChunksPerFile = 1;
+
+  const results = await service.lexicalRetrieveFromFilesFts('match token');
+  assert.equal(batchCalls, 1);
+  assert.equal(singleCalls, 0);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].filePath, 'src/a.ts');
+  assert.equal(results[1].filePath, 'src/b.ts');
 });
