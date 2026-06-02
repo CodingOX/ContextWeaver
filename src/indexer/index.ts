@@ -35,7 +35,7 @@ export interface IndexStats {
 }
 
 /** 索引文件信息 */
-interface FileToIndex {
+export interface FileToIndex {
   path: string;
   hash: string;
   chunks: ProcessedChunk[];
@@ -48,6 +48,41 @@ export interface ChunkFtsDocInput {
   breadcrumb: string;
   displayCode: string;
   language?: string;
+}
+
+/** 每批最多处理的 Chunk 数（控制单批 API 并发请求数 ≤ 20） */
+export const BATCH_CHUNKS = 400;
+
+/**
+ * 按 Chunk 数动态分组文件列表
+ *
+ * 目标：控制每批 Embedding 请求的并发数在可控范围。
+ * BATCH_CHUNKS=400 → 每批最多 20 个 API 并发请求 (400÷20 chunk/req)。
+ */
+export function splitIntoChunkBatches(
+  files: FileToIndex[],
+  maxChunks: number,
+): FileToIndex[][] {
+  const batches: FileToIndex[][] = [];
+  let current: FileToIndex[] = [];
+  let currentChunkCount = 0;
+
+  for (const file of files) {
+    if (currentChunkCount + file.chunks.length > maxChunks && current.length > 0) {
+      batches.push(current);
+      current = [file];
+      currentChunkCount = file.chunks.length;
+    } else {
+      current.push(file);
+      currentChunkCount += file.chunks.length;
+    }
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
 }
 
 const CODE_IDENTIFIER_REGEX = /[A-Za-z_][A-Za-z0-9_]*/g;
@@ -264,13 +299,11 @@ export class Indexer {
   }
 
   /**
-   * 批量索引文件（性能优化版）
+   * 批量索引文件（断点续传版）
    *
-   * 优化策略：
-   * 1. Embedding 已批量化（原有）
-   * 2. LanceDB 写入批量化：N 次 upsertFile → 1 次 batchUpsertFiles
-   * 3. FTS 写入批量化：N 次删除+插入 → 1 次批量删除 + 1 次批量插入
-   * 4. 日志汇总化：逐文件日志 → 汇总日志
+   * 每 BATCH_CHUNKS 个 chunk 为一批，逐批独立完成:
+   * 收集 → Embedding → 写库 → 标记 hash。
+   * 单批失败不影响其他批次。
    */
   private async batchIndex(
     db: Database.Database,
@@ -281,153 +314,160 @@ export class Indexer {
       return { success: 0, errors: 0 };
     }
 
-    // ===== 阶段 1: 收集所有需要 embedding 的文本 =====
-    const allTexts: string[] = [];
-    const globalIndexByFileChunk: number[][] = [];
+    const batches = splitIntoChunkBatches(files, BATCH_CHUNKS);
+    const totalEmbeddingRequests = batches.reduce((sum, batch) => {
+      const chunks = batch.reduce((count, file) => count + file.chunks.length, 0);
+      return sum + Math.ceil(chunks / 20);
+    }, 0);
+    let completedEmbeddingRequests = 0;
+    let totalSuccess = 0;
+    let totalErrors = 0;
 
-    for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
-      const file = files[fileIdx];
-      globalIndexByFileChunk[fileIdx] = [];
-      for (let chunkIdx = 0; chunkIdx < file.chunks.length; chunkIdx++) {
-        const globalIdx = allTexts.length;
-        allTexts.push(file.chunks[chunkIdx].vectorText);
-        globalIndexByFileChunk[fileIdx][chunkIdx] = globalIdx;
-      }
-    }
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      const batch = batches[batchIdx];
 
-    if (allTexts.length === 0) {
-      return { success: 0, errors: 0 };
-    }
+      // ===== 阶段 1: 收集本批 texts + 文件范围映射 =====
+      const batchTexts: string[] = [];
+      const fileRanges: Array<{ fileIdx: number; start: number; end: number }> = [];
 
-    // ===== 阶段 2: 批量获取 embeddings =====
-    logger.info({ count: allTexts.length, files: files.length }, '开始批量 Embedding');
-
-    let embeddings: number[][];
-    try {
-      // 传递进度回调给 embedBatch，让它在每个 API 批次完成时报告进度
-      const results = await this.getOrCreateEmbeddingClient().embedBatch(allTexts, 20, onProgress);
-      embeddings = results.map((r) => r.embedding);
-    } catch (err) {
-      const error = err as { message?: string; stack?: string };
-      logger.error({ error: error.message, stack: error.stack }, 'Embedding 失败');
-      clearVectorIndexHash(
-        db,
-        files.map((f) => f.path),
-      );
-      return { success: 0, errors: files.length };
-    }
-
-    // ===== 阶段 3: 组装所有 ChunkRecords =====
-    const filesToUpsert: Array<{ path: string; hash: string; records: ChunkRecord[] }> = [];
-    const allFtsChunks: ChunkFtsDoc[] = [];
-    const successFiles: Array<{ path: string; hash: string }> = [];
-    const errorFiles: string[] = [];
-
-    for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
-      const file = files[fileIdx];
-
-      try {
-        const records: ChunkRecord[] = [];
-
-        for (let chunkIdx = 0; chunkIdx < file.chunks.length; chunkIdx++) {
-          const chunk = file.chunks[chunkIdx];
-          const globalIdx = globalIndexByFileChunk[fileIdx][chunkIdx];
-
-          if (globalIdx === undefined) {
-            throw new Error(`找不到 chunk 的 embedding: ${file.path}#${chunkIdx}`);
-          }
-
-          const record: ChunkRecord = {
-            chunk_id: `${file.path}#${file.hash}#${chunkIdx}`,
-            file_path: file.path,
-            file_hash: file.hash,
-            chunk_index: chunkIdx,
-            vector: embeddings[globalIdx],
-            display_code: chunk.displayCode,
-            vector_text: chunk.vectorText,
-            language: chunk.metadata.language,
-            breadcrumb: chunk.metadata.contextPath.join(' > '),
-            start_index: chunk.metadata.startIndex,
-            end_index: chunk.metadata.endIndex,
-            raw_start: chunk.metadata.rawSpan.start,
-            raw_end: chunk.metadata.rawSpan.end,
-            vec_start: chunk.metadata.vectorSpan.start,
-            vec_end: chunk.metadata.vectorSpan.end,
-          };
-
-          records.push(record);
-
-          // 收集 FTS 数据
-          allFtsChunks.push(
-            buildChunkFtsDoc({
-              chunkId: record.chunk_id,
-              filePath: record.file_path,
-              chunkIndex: record.chunk_index,
-              breadcrumb: record.breadcrumb,
-              displayCode: record.display_code,
-            }),
-          );
+      for (let fi = 0; fi < batch.length; fi++) {
+        const file = batch[fi];
+        const start = batchTexts.length;
+        for (const chunk of file.chunks) {
+          batchTexts.push(chunk.vectorText);
         }
-
-        filesToUpsert.push({ path: file.path, hash: file.hash, records });
-        successFiles.push({ path: file.path, hash: file.hash });
-      } catch (err) {
-        const error = err as { message?: string; stack?: string };
-        logger.error(
-          { path: file.path, error: error.message, stack: error.stack },
-          '组装 ChunkRecord 失败',
-        );
-        errorFiles.push(file.path);
+        fileRanges.push({ fileIdx: fi, start, end: batchTexts.length });
       }
-    }
 
-    // ===== 阶段 4: 批量写入 LanceDB =====
-    if (filesToUpsert.length > 0) {
+      if (batchTexts.length === 0) {
+        continue;
+      }
+
+      // ===== 阶段 2: Embedding =====
+      const batchEmbeddingRequests = Math.ceil(batchTexts.length / 20);
+      let embeddings: number[][];
       try {
-        await this.vectorStore?.batchUpsertFiles(filesToUpsert);
-        logger.info(
-          { files: filesToUpsert.length, chunks: allFtsChunks.length },
-          'LanceDB 批量写入完成',
-        );
+        const client = this.getOrCreateEmbeddingClient();
+        const results = await client.embedBatch(batchTexts, 20, (completed, _total) => {
+          // 每个 chunk batch 都会新建 ProgressTracker，这里统一折算为全局进度。
+          onProgress?.(completedEmbeddingRequests + completed, totalEmbeddingRequests);
+        });
+        completedEmbeddingRequests += batchEmbeddingRequests;
+        embeddings = results.map((r) => r.embedding);
       } catch (err) {
         const error = err as { message?: string; stack?: string };
-        logger.error({ error: error.message, stack: error.stack }, 'LanceDB 批量写入失败');
-        // 所有文件都失败
+        logger.error({ error: error.message, stack: error.stack }, 'Embedding 失败');
+        completedEmbeddingRequests += batchEmbeddingRequests;
         clearVectorIndexHash(
           db,
-          files.map((f) => f.path),
+          batch.map((f) => f.path),
         );
-        return { success: 0, errors: files.length };
+        totalErrors += batch.length;
+        continue;
       }
-    }
 
-    // ===== 阶段 5: 批量更新 FTS 索引 =====
-    if (isChunksFtsInitialized(db) && allFtsChunks.length > 0) {
-      try {
-        // 批量删除旧 FTS 记录
-        const pathsToDelete = filesToUpsert.map((f) => f.path);
-        batchDeleteFileChunksFts(db, pathsToDelete);
-        // 批量插入新 FTS 记录
-        batchUpsertChunkFts(db, allFtsChunks);
-        logger.info(
-          { files: pathsToDelete.length, chunks: allFtsChunks.length },
-          'FTS 批量更新完成',
-        );
-      } catch (err) {
-        const error = err as { message?: string };
-        logger.warn({ error: error.message }, 'FTS 批量更新失败（向量索引已成功）');
+      // ===== 阶段 3-4: 组装 ChunkRecord 并逐文件写 LanceDB =====
+      const successFiles: Array<{ path: string; hash: string }> = [];
+      const errorFiles: string[] = [];
+      const successFtsChunks: ChunkFtsDoc[] = [];
+
+      for (let fi = 0; fi < batch.length; fi++) {
+        const file = batch[fi];
+        const range = fileRanges.find((r) => r.fileIdx === fi);
+        if (!range) {
+          errorFiles.push(file.path);
+          continue;
+        }
+
+        try {
+          const records: ChunkRecord[] = [];
+          const fileFtsChunks: ChunkFtsDoc[] = [];
+
+          for (let ci = 0; ci < file.chunks.length; ci++) {
+            const chunk = file.chunks[ci];
+            const embedding = embeddings[range.start + ci];
+
+            const record: ChunkRecord = {
+              chunk_id: `${file.path}#${file.hash}#${ci}`,
+              file_path: file.path,
+              file_hash: file.hash,
+              chunk_index: ci,
+              vector: embedding,
+              display_code: chunk.displayCode,
+              vector_text: chunk.vectorText,
+              language: chunk.metadata.language,
+              breadcrumb: chunk.metadata.contextPath.join(' > '),
+              start_index: chunk.metadata.startIndex,
+              end_index: chunk.metadata.endIndex,
+              raw_start: chunk.metadata.rawSpan.start,
+              raw_end: chunk.metadata.rawSpan.end,
+              vec_start: chunk.metadata.vectorSpan.start,
+              vec_end: chunk.metadata.vectorSpan.end,
+            };
+
+            records.push(record);
+
+            fileFtsChunks.push(
+              buildChunkFtsDoc({
+                chunkId: record.chunk_id,
+                filePath: record.file_path,
+                chunkIndex: record.chunk_index,
+                breadcrumb: record.breadcrumb,
+                displayCode: record.display_code,
+              }),
+            );
+          }
+
+          // 单文件写入 LanceDB
+          await this.vectorStore!.batchUpsertFiles([
+            { path: file.path, hash: file.hash, records },
+          ]);
+          successFiles.push({ path: file.path, hash: file.hash });
+          // 只有向量写入成功后，才把对应 FTS 文档加入成功集合
+          successFtsChunks.push(...fileFtsChunks);
+        } catch (err) {
+          const error = err as { message?: string; stack?: string };
+          logger.error(
+            { path: file.path, error: error.message },
+            '写入 LanceDB 失败',
+          );
+          // 清理可能已写入的旧向量
+          try {
+            await this.vectorStore!.deleteFile(file.path);
+          } catch {
+            /* 尽力清理，忽略二次错误 */
+          }
+          errorFiles.push(file.path);
+        }
       }
+
+      // ===== 阶段 5: FTS 更新 =====
+      if (successFiles.length > 0 && isChunksFtsInitialized(db)) {
+        try {
+          const pathsToDelete = successFiles.map((f) => f.path);
+          batchDeleteFileChunksFts(db, pathsToDelete);
+          batchUpsertChunkFts(db, successFtsChunks);
+        } catch (err) {
+          const error = err as { message?: string };
+          logger.warn({ error: error.message }, 'FTS 批量更新失败（向量索引已成功）');
+        }
+      }
+
+      // ===== 阶段 6: 标记完成 =====
+      if (successFiles.length > 0) {
+        batchUpdateVectorIndexHash(db, successFiles);
+      }
+
+      totalSuccess += successFiles.length;
+      totalErrors += errorFiles.length;
     }
 
-    // ===== 阶段 6: 更新 SQLite 元数据 =====
-    if (successFiles.length > 0) {
-      batchUpdateVectorIndexHash(db, successFiles);
-    }
+    logger.info(
+      { success: totalSuccess, errors: totalErrors },
+      '批量索引完成',
+    );
 
-    // 汇总日志
-    logger.info({ success: successFiles.length, errors: errorFiles.length }, '批量索引完成');
-
-    return { success: successFiles.length, errors: errorFiles.length };
+    return { success: totalSuccess, errors: totalErrors };
   }
 
   /**

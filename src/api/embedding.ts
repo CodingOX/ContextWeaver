@@ -170,10 +170,12 @@ class RateLimitController {
   private consecutiveSuccesses = 0;
   /** 当前退避时间（毫秒） */
   private backoffMs = 5000;
-  /** 恢复并发所需的连续成功次数 */
-  private readonly successesPerConcurrencyIncrease = 3;
+  /** 恢复并发所需的连续成功次数：429 后慢恢复，避免快速回到高并发再次撞限流 */
+  private readonly successesPerConcurrencyIncrease = 10;
+  /** 降低退避时间所需的连续成功次数：需要较长稳定窗口才认为限流解除 */
+  private readonly successesPerBackoffDecrease = 50;
   /** 最小退避时间 */
-  private readonly minBackoffMs = 5000;
+  private readonly minBackoffMs = 10000;
   /** 最大退避时间 */
   private readonly maxBackoffMs = 60000;
 
@@ -220,8 +222,9 @@ class RateLimitController {
       this.consecutiveSuccesses = 0;
     }
 
-    // 连续成功 10 次后，逐步减少退避时间
-    if (this.consecutiveSuccesses > 0 && this.consecutiveSuccesses % 10 === 0) {
+    // 连续成功足够多次后，才逐步减少退避时间。
+    // 429 通常说明 provider 侧吞吐已接近上限，过早降低 backoff 会导致反复抖动。
+    if (this.consecutiveSuccesses > 0 && this.consecutiveSuccesses % this.successesPerBackoffDecrease === 0) {
       this.backoffMs = Math.max(this.minBackoffMs, this.backoffMs / 2);
     }
   }
@@ -268,6 +271,8 @@ class RateLimitController {
         previousConcurrency,
         newConcurrency: this.currentConcurrency,
         activeRequests: this.activeRequests,
+        successesPerConcurrencyIncrease: this.successesPerConcurrencyIncrease,
+        successesPerBackoffDecrease: this.successesPerBackoffDecrease,
       },
       '速率限制：触发 429，暂停所有请求',
     );
@@ -333,6 +338,10 @@ export class EmbeddingClient {
   private rateLimiter: RateLimitController;
   private readonly apiKeyPool: string[];
   private nextApiKeyIndex = 0;
+  /** 坏 Key 冷却表: keyIndex → 解禁时间戳 (ms)，过期后自动恢复 */
+  private badKeys = new Map<number, number>();
+  /** 坏 Key 冷却时长 (5 分钟) */
+  private readonly BAD_KEY_BAN_MS = 5 * 60 * 1000;
 
   constructor(config?: EmbeddingConfig) {
     this.config = config || getEmbeddingConfig();
@@ -356,12 +365,40 @@ export class EmbeddingClient {
   }
 
   /**
-   * 获取下一个用于请求的 API Key（轮询）
+   * 获取下一个健康 Key 的索引（跳过冷却期内的坏 Key）
+   *
+   * 返回 -1 表示当前所有 Key 都在冷却期内，调用方应判定为不可恢复。
    */
-  private getNextApiKey(): string {
-    const key = this.apiKeyPool[this.nextApiKeyIndex];
-    this.nextApiKeyIndex = (this.nextApiKeyIndex + 1) % this.apiKeyPool.length;
-    return key;
+  private getNextKeyIndex(): number {
+    const now = Date.now();
+
+    // 清理已过冷却期的坏 Key 标记
+    for (const [idx, banUntil] of this.badKeys) {
+      if (now >= banUntil) this.badKeys.delete(idx);
+    }
+
+    const start = this.nextApiKeyIndex;
+    for (let i = 0; i < this.apiKeyPool.length; i++) {
+      const idx = (start + i) % this.apiKeyPool.length;
+      const banUntil = this.badKeys.get(idx);
+      if (banUntil === undefined || now >= banUntil) {
+        this.badKeys.delete(idx);
+        this.nextApiKeyIndex = (idx + 1) % this.apiKeyPool.length;
+        return idx;
+      }
+    }
+
+    // 所有 Key 都在冷却期 → 由调用方决定是否重置或失败
+    return -1;
+  }
+
+  /**
+   * 标记 Key 为不可用（设置冷却期）
+   */
+  private markKeyBad(index: number): void {
+    const banUntil = Date.now() + this.BAD_KEY_BAN_MS;
+    this.badKeys.set(index, banUntil);
+    logger.warn({ keyIndex: index, banUntil: new Date(banUntil).toISOString() }, 'API Key 已标记为不可用，5 分钟后重新尝试');
   }
 
   /**
@@ -418,8 +455,7 @@ export class EmbeddingClient {
   }
 
   /**
-   * 带速率限制和网络错误重试的批次处理
-   * 使用循环而非递归，避免栈溢出和槽位泄漏
+   * 带速率限制、网络重试、Key 自动切换的批次处理
    */
   private async processWithRateLimit(
     texts: string[],
@@ -431,13 +467,15 @@ export class EmbeddingClient {
     const INITIAL_RETRY_DELAY_MS = 1000;
 
     let networkRetries = 0;
+    let currentKeyIndex: number | null = null;
+    let currentApiKey: string | null = null;
+    const authTriedKeyIndexes = new Set<number>();
 
     while (true) {
       if (signal?.aborted) {
         throw new Error('Embedding 批处理已中止');
       }
 
-      // 获取执行槽位（可能等待）
       await this.rateLimiter.acquire();
 
       if (signal?.aborted) {
@@ -445,8 +483,23 @@ export class EmbeddingClient {
         throw new Error('Embedding 批处理已中止');
       }
 
+      // 首次进入或 401 切 Key 后重新取 Key
+      if (currentKeyIndex === null) {
+        currentKeyIndex = this.getNextKeyIndex();
+        if (currentKeyIndex < 0) {
+          this.rateLimiter.releaseFailure();
+          throw new Error('所有 Embedding API Key 均处于认证失败冷却期');
+        }
+        currentApiKey = this.apiKeyPool[currentKeyIndex];
+      }
+
+      if (currentApiKey === null) {
+        this.rateLimiter.releaseFailure();
+        throw new Error('未获取到可用 Embedding API Key');
+      }
+
       try {
-        const result = await this.processBatch(texts, startIndex, progress, signal);
+        const result = await this.processBatch(texts, startIndex, progress, signal, currentApiKey);
         this.rateLimiter.releaseSuccess();
         return result;
       } catch (err) {
@@ -460,33 +513,42 @@ export class EmbeddingClient {
         const isRateLimited = errorMessage.includes('429') || errorMessage.includes('rate');
         const isNetworkError = this.isNetworkError(err);
         const isPayloadTooLarge = this.isPayloadTooLarge(err);
+        const isAuthErr = this.isAuthError(err);
 
         if (isRateLimited) {
-          // 429 错误：释放槽位，触发全局暂停
           this.rateLimiter.releaseForRetry();
           await this.rateLimiter.triggerRateLimit();
-          networkRetries = 0; // 重置网络重试计数
-          // 循环继续，重新获取槽位并重试
+          networkRetries = 0;
         } else if (isNetworkError && networkRetries < MAX_NETWORK_RETRIES) {
-          // 网络错误：指数退避重试
           networkRetries++;
           const delayMs = INITIAL_RETRY_DELAY_MS * 2 ** (networkRetries - 1);
-
           logger.warn(
-            {
-              error: errorMessage,
-              retry: networkRetries,
-              maxRetries: MAX_NETWORK_RETRIES,
-              delayMs,
-            },
+            { error: errorMessage, retry: networkRetries, maxRetries: MAX_NETWORK_RETRIES, delayMs },
             '网络错误，准备重试',
           );
-
           this.rateLimiter.releaseForRetry();
+          // 保留现有契约：网络重试会轮询到下一个 Key，而不是固定复用当前 Key。
+          currentKeyIndex = null;
+          currentApiKey = null;
           await sleep(delayMs);
-          // 循环继续，重新获取槽位并重试
+        } else if (isAuthErr) {
+          if (currentKeyIndex !== null) {
+            authTriedKeyIndexes.add(currentKeyIndex);
+            this.markKeyBad(currentKeyIndex);
+          }
+
+          if (this.apiKeyPool.length > 1 && authTriedKeyIndexes.size < this.apiKeyPool.length) {
+            // 401/403：标记坏 Key，下次循环换 Key 重试；单批最多尝试每个 Key 一次
+            logger.warn({ keyIndex: currentKeyIndex, error: errorMessage }, 'API Key 认证失败，切换到下一个 Key');
+            currentKeyIndex = null;
+            currentApiKey = null;
+            this.rateLimiter.releaseForRetry();
+            networkRetries = 0;
+          } else {
+            this.rateLimiter.releaseFailure();
+            throw err;
+          }
         } else if (isPayloadTooLarge && texts.length > 1) {
-          // 413 错误：释放槽位后拆分批次并递归处理
           this.rateLimiter.releaseForRetry();
 
           const splitIndex = Math.ceil(texts.length / 2);
@@ -520,7 +582,6 @@ export class EmbeddingClient {
           );
           return [...leftResults, ...rightResults];
         } else {
-          // 其他错误或重试次数耗尽：抛出异常
           this.rateLimiter.releaseFailure();
 
           if (isNetworkError) {
@@ -609,15 +670,25 @@ export class EmbeddingClient {
   }
 
   /**
+   * 判断是否为认证错误 (401/403)
+   */
+  private isAuthError(err: unknown): boolean {
+    const error = err as { message?: string; status?: number };
+    const message = (error.message || '').toLowerCase();
+    return message.includes('401') || message.includes('403')
+      || message.includes('unauthorized') || message.includes('forbidden');
+  }
+
+  /**
    * 处理单个批次（单次请求，不含重试逻辑）
    */
   private async processBatch(
     texts: string[],
     startIndex: number,
     progress: ProgressTracker,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    apiKey: string,
   ): Promise<EmbeddingResult[]> {
-    const apiKey = this.getNextApiKey();
 
     const requestBody: EmbeddingRequest = {
       model: this.config.model,
