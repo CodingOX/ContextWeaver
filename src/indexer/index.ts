@@ -426,7 +426,11 @@ export class Indexer {
           }
 
           // 单文件写入 LanceDB
-          await this.vectorStore!.batchUpsertFiles([{ path: file.path, hash: file.hash, records }]);
+          const store = this.vectorStore;
+          if (!store) {
+            throw new Error('vectorStore 未初始化');
+          }
+          await store.batchUpsertFiles([{ path: file.path, hash: file.hash, records }]);
           successFiles.push({ path: file.path, hash: file.hash });
           // 只有向量写入成功后，才把对应 FTS 文档加入成功集合
           successFtsChunks.push(...fileFtsChunks);
