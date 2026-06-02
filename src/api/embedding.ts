@@ -171,7 +171,10 @@ class TokenBucket {
   private refill(): void {
     const now = Date.now();
     const elapsed = now - this.lastRefill;
-    this.tokens = Math.min(this.capacity, this.tokens + elapsed * (this.refillRatePerMinute / 60000));
+    this.tokens = Math.min(
+      this.capacity,
+      this.tokens + elapsed * (this.refillRatePerMinute / 60000),
+    );
     this.lastRefill = now;
   }
 
@@ -250,7 +253,12 @@ class RateLimitController {
   private tokenBucketWaits = 0;
   private totalTokenBucketWaitMs = 0;
 
-  constructor(maxConcurrency: number, maxRpm?: number, maxTpm?: number, estimatedTokensPerRequest?: number) {
+  constructor(
+    maxConcurrency: number,
+    maxRpm?: number,
+    maxTpm?: number,
+    estimatedTokensPerRequest?: number,
+  ) {
     this.maxConcurrency = maxConcurrency;
     this.currentConcurrency = maxConcurrency;
 
@@ -351,8 +359,7 @@ class RateLimitController {
   reportTokens(actualTokens: number): void {
     if (actualTokens <= 0) return;
     // EMA: α=0.3，逐步逼近真实值
-    this.estimatedTokensPerRequest =
-      0.7 * this.estimatedTokensPerRequest + 0.3 * actualTokens;
+    this.estimatedTokensPerRequest = 0.7 * this.estimatedTokensPerRequest + 0.3 * actualTokens;
   }
 
   /**
@@ -465,7 +472,10 @@ class RateLimitController {
     this.pausePromise = null;
     resumeResolve();
 
-    logger.info({ waitMs: this.backoffMs, currentConcurrency: this.currentConcurrency }, '速率限制：恢复请求');
+    logger.info(
+      { waitMs: this.backoffMs, currentConcurrency: this.currentConcurrency },
+      '速率限制：恢复请求',
+    );
   }
 
   /**
@@ -513,7 +523,12 @@ function getRateLimitController(
   estimatedTokensPerRequest?: number,
 ): RateLimitController {
   if (!globalRateLimitController) {
-    globalRateLimitController = new RateLimitController(maxConcurrency, maxRpm, maxTpm, estimatedTokensPerRequest);
+    globalRateLimitController = new RateLimitController(
+      maxConcurrency,
+      maxRpm,
+      maxTpm,
+      estimatedTokensPerRequest,
+    );
   }
   return globalRateLimitController;
 }
