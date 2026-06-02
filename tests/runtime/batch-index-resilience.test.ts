@@ -282,7 +282,7 @@ test('batchIndex Embedding 中间批次失败后继续处理后续批次（断�
   }
 });
 
-test('batchIndex 单文件写入 LanceDB 失败时不应删除旧向量', async () => {
+test('batchIndex 子批次写入 LanceDB 失败时不应删除旧向量', async () => {
   const projectId = `batch-write-failure-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
   const db = initDb(projectId);
 
@@ -345,14 +345,13 @@ test('batchIndex 单文件写入 LanceDB 失败时不应删除旧向量', async 
   }
 
   const deleteCalls: string[] = [];
-  const upsertedFiles: string[] = [];
+  const upsertGroups: string[][] = [];
   const indexer = new Indexer(projectId, 3) as any;
   indexer.embeddingClient = new MockEmbeddingClient();
   indexer.vectorStore = {
     batchUpsertFiles: async (items: Array<{ path: string }>) => {
-      const path = items[0]?.path;
-      if (path) upsertedFiles.push(path);
-      if (path === 'old-b.ts') {
+      upsertGroups.push(items.map((item) => item.path));
+      if (items.some((item) => item.path === 'old-b.ts')) {
         throw new Error('mock lancedb failure');
       }
     },
@@ -364,12 +363,99 @@ test('batchIndex 单文件写入 LanceDB 失败时不应删除旧向量', async 
   try {
     const result = await indexer.batchIndex(db, files);
 
-    assert.deepEqual(result, { success: 1, errors: 1 });
-    assert.deepEqual(upsertedFiles, ['old-a.ts', 'old-b.ts']);
+    assert.deepEqual(result, { success: 0, errors: 2 });
+    assert.deepEqual(upsertGroups, [['old-a.ts', 'old-b.ts']]);
     assert.deepEqual(deleteCalls, [], '写入失败时不应删除旧向量');
-    assert.deepEqual(getFilesNeedingVectorIndex(db), ['old-b.ts']);
+    assert.deepEqual(getFilesNeedingVectorIndex(db).sort(), ['old-a.ts', 'old-b.ts']);
   } finally {
     closeDb(db);
     await fs.rm(path.join(os.homedir(), '.coderecall', projectId), { recursive: true, force: true });
   }
+});
+
+test('batchIndex 同一 outer batch 内应聚合写入 LanceDB 并按子批次确认', async () => {
+  const projectId = `batch-grouped-upsert-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const db = initDb(projectId);
+
+  function makeChunk(index: number, filePath: string): ProcessedChunk {
+    return {
+      displayCode: `// chunk ${index} from ${filePath}`,
+      vectorText: `vector text ${index} for ${filePath}`,
+      nwsSize: 50,
+      metadata: {
+        filePath,
+        language: 'typescript',
+        contextPath: [filePath],
+        startIndex: index * 10,
+        endIndex: index * 10 + 5,
+        rawSpan: { start: index * 10, end: index * 10 + 5 },
+        vectorSpan: { start: index * 10, end: index * 10 + 5 },
+      },
+    };
+  }
+
+  const files = ['group-a.ts', 'group-b.ts', 'group-c.ts'].map((filePath, fileIndex) => ({
+    path: filePath,
+    hash: `hash-${fileIndex}`,
+    chunks: Array.from({ length: 2 }, (_, chunkIndex) => makeChunk(chunkIndex, filePath)),
+  }));
+
+  batchUpsert(
+    db,
+    files.map((file) => ({
+      path: file.path,
+      hash: file.hash,
+      mtime: Date.now(),
+      size: 100,
+      content: '// test',
+      language: 'typescript',
+      vectorIndexHash: null,
+    })),
+  );
+
+  class MockEmbeddingClient extends EmbeddingClient {
+    constructor() {
+      super({
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com/embeddings',
+        model: 'test',
+        maxConcurrency: 1,
+        dimensions: 3,
+      });
+    }
+
+    override async embedBatch(
+      texts: string[],
+    ): Promise<Array<{ text: string; embedding: number[]; index: number }>> {
+      return texts.map((t, i) => ({
+        text: t,
+        embedding: [i + 0.1, i + 0.2, i + 0.3],
+        index: i,
+      }));
+    }
+  }
+
+  const groupedCalls: string[][] = [];
+  const indexer = new Indexer(projectId, 3) as any;
+  indexer.embeddingClient = new MockEmbeddingClient();
+  indexer.vectorStore = {
+    batchUpsertFiles: async (items: Array<{ path: string }>) => {
+      groupedCalls.push(items.map((item) => item.path));
+    },
+    deleteFile: async () => {},
+  };
+
+  try {
+    const result = await indexer.batchIndex(db, files);
+    assert.deepEqual(result, { success: 3, errors: 0 });
+  } finally {
+    closeDb(db);
+    await fs.rm(path.join(os.homedir(), '.coderecall', projectId), { recursive: true, force: true });
+  }
+
+  assert.deepEqual(
+    groupedCalls,
+    [['group-a.ts', 'group-b.ts', 'group-c.ts']],
+    '同一 outer batch 内多个文件应聚合成一次 LanceDB 写入',
+  );
 });

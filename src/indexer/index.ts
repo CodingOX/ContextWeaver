@@ -20,7 +20,12 @@ import {
   isChunksFtsInitialized,
 } from '../search/fts.js';
 import { logger } from '../utils/logger.js';
-import { type ChunkRecord, getVectorStore, type VectorStore } from '../vectorStore/index.js';
+import {
+  type ChunkRecord,
+  getVectorStore,
+  VectorStore,
+  type VectorStore as VectorStoreInstance,
+} from '../vectorStore/index.js';
 
 // ===========================================
 // 类型定义
@@ -167,7 +172,7 @@ export function buildChunkFtsDoc(input: ChunkFtsDocInput): ChunkFtsDoc {
 
 export class Indexer {
   private projectId: string;
-  private vectorStore: VectorStore | null = null;
+  private vectorStore: VectorStoreInstance | null = null;
   private embeddingClient: EmbeddingClient | null = null;
   private vectorDim: number;
 
@@ -373,93 +378,120 @@ export class Indexer {
         continue;
       }
 
-      // ===== 阶段 3-4: 组装 ChunkRecord 并逐文件写 LanceDB =====
-      const successFiles: Array<{ path: string; hash: string }> = [];
+      // ===== 阶段 3: 先组装当前 outer batch 的所有文件记录 =====
+      const store = this.vectorStore;
+      if (!store) {
+        throw new Error('vectorStore 未初始化');
+      }
+
+      const filesToWrite: Array<{
+        path: string;
+        hash: string;
+        records: ChunkRecord[];
+        ftsDocs: ChunkFtsDoc[];
+      }> = [];
       const errorFiles: string[] = [];
-      const successFtsChunks: ChunkFtsDoc[] = [];
 
       for (let fi = 0; fi < batch.length; fi++) {
         const file = batch[fi];
-        const range = fileRanges.find((r) => r.fileIdx === fi);
+        const range = fileRanges[fi];
         if (!range) {
           errorFiles.push(file.path);
           continue;
         }
 
+        const records: ChunkRecord[] = [];
+        const fileFtsChunks: ChunkFtsDoc[] = [];
+
+        for (let ci = 0; ci < file.chunks.length; ci++) {
+          const chunk = file.chunks[ci];
+          const embedding = embeddings[range.start + ci];
+
+          const record: ChunkRecord = {
+            chunk_id: `${file.path}#${file.hash}#${ci}`,
+            file_path: file.path,
+            file_hash: file.hash,
+            chunk_index: ci,
+            vector: embedding,
+            display_code: chunk.displayCode,
+            vector_text: chunk.vectorText,
+            language: chunk.metadata.language,
+            breadcrumb: chunk.metadata.contextPath.join(' > '),
+            start_index: chunk.metadata.startIndex,
+            end_index: chunk.metadata.endIndex,
+            raw_start: chunk.metadata.rawSpan.start,
+            raw_end: chunk.metadata.rawSpan.end,
+            vec_start: chunk.metadata.vectorSpan.start,
+            vec_end: chunk.metadata.vectorSpan.end,
+          };
+
+          records.push(record);
+          fileFtsChunks.push(
+            buildChunkFtsDoc({
+              chunkId: record.chunk_id,
+              filePath: record.file_path,
+              chunkIndex: record.chunk_index,
+              breadcrumb: record.breadcrumb,
+              displayCode: record.display_code,
+            }),
+          );
+        }
+
+        filesToWrite.push({
+          path: file.path,
+          hash: file.hash,
+          records,
+          ftsDocs: fileFtsChunks,
+        });
+      }
+
+      // ===== 阶段 4-6: 按 VectorStore 子批次写入并即时确认 =====
+      // 这里故意不把确认拖到整个 outer batch 末尾：
+      // 某个子批次成功后立即更新 FTS + vector_index_hash，
+      // 中断时最多只会重做最后未确认的子批次。
+      const upsertBatches = VectorStore.splitUpsertBatches(filesToWrite);
+
+      for (const upsertBatch of upsertBatches) {
         try {
-          const records: ChunkRecord[] = [];
-          const fileFtsChunks: ChunkFtsDoc[] = [];
-
-          for (let ci = 0; ci < file.chunks.length; ci++) {
-            const chunk = file.chunks[ci];
-            const embedding = embeddings[range.start + ci];
-
-            const record: ChunkRecord = {
-              chunk_id: `${file.path}#${file.hash}#${ci}`,
-              file_path: file.path,
-              file_hash: file.hash,
-              chunk_index: ci,
-              vector: embedding,
-              display_code: chunk.displayCode,
-              vector_text: chunk.vectorText,
-              language: chunk.metadata.language,
-              breadcrumb: chunk.metadata.contextPath.join(' > '),
-              start_index: chunk.metadata.startIndex,
-              end_index: chunk.metadata.endIndex,
-              raw_start: chunk.metadata.rawSpan.start,
-              raw_end: chunk.metadata.rawSpan.end,
-              vec_start: chunk.metadata.vectorSpan.start,
-              vec_end: chunk.metadata.vectorSpan.end,
-            };
-
-            records.push(record);
-
-            fileFtsChunks.push(
-              buildChunkFtsDoc({
-                chunkId: record.chunk_id,
-                filePath: record.file_path,
-                chunkIndex: record.chunk_index,
-                breadcrumb: record.breadcrumb,
-                displayCode: record.display_code,
-              }),
-            );
-          }
-
-          // 单文件写入 LanceDB
-          const store = this.vectorStore;
-          if (!store) {
-            throw new Error('vectorStore 未初始化');
-          }
-          await store.batchUpsertFiles([{ path: file.path, hash: file.hash, records }]);
-          successFiles.push({ path: file.path, hash: file.hash });
-          // 只有向量写入成功后，才把对应 FTS 文档加入成功集合
-          successFtsChunks.push(...fileFtsChunks);
+          await store.batchUpsertFiles(
+            upsertBatch.map(({ path, hash, records }) => ({ path, hash, records })),
+          );
         } catch (err) {
           const error = err as { message?: string; stack?: string };
-          logger.error({ path: file.path, error: error.message }, '写入 LanceDB 失败');
-          // 不删除旧向量，保留单调更新语义；后续通过 healing 再次补齐新版本。
-          errorFiles.push(file.path);
+          logger.error(
+            {
+              paths: upsertBatch.map((file) => file.path),
+              error: error.message,
+              stack: error.stack,
+            },
+            '批量写入 LanceDB 失败',
+          );
+          // 子批次失败时保留旧向量版本，后续由 healing 重新补齐。
+          errorFiles.push(...upsertBatch.map((file) => file.path));
+          continue;
         }
-      }
 
-      // ===== 阶段 5: FTS 更新 =====
-      if (successFiles.length > 0 && isChunksFtsInitialized(db)) {
-        try {
-          const pathsToDelete = successFiles.map((f) => f.path);
-          batchDeleteFileChunksFts(db, pathsToDelete);
-          batchUpsertChunkFts(db, successFtsChunks);
-        } catch (err) {
-          const error = err as { message?: string };
-          logger.warn({ error: error.message }, 'FTS 批量更新失败（向量索引已成功）');
+        const successFiles = upsertBatch.map(({ path, hash }) => ({ path, hash }));
+        const successFtsChunks = upsertBatch.flatMap((file) => file.ftsDocs);
+
+        if (successFiles.length > 0 && isChunksFtsInitialized(db)) {
+          try {
+            const pathsToDelete = successFiles.map((file) => file.path);
+            batchDeleteFileChunksFts(db, pathsToDelete);
+            batchUpsertChunkFts(db, successFtsChunks);
+          } catch (err) {
+            const error = err as { message?: string };
+            logger.warn({ error: error.message }, 'FTS 批量更新失败（向量索引已成功）');
+          }
         }
+
+        if (successFiles.length > 0) {
+          batchUpdateVectorIndexHash(db, successFiles);
+        }
+
+        totalSuccess += successFiles.length;
       }
 
-      // ===== 阶段 6: 标记完成 =====
-      if (successFiles.length > 0) {
-        batchUpdateVectorIndexHash(db, successFiles);
-      }
-
-      totalSuccess += successFiles.length;
       totalErrors += errorFiles.length;
     }
 

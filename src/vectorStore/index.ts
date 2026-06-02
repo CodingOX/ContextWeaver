@@ -145,6 +145,43 @@ export class VectorStore {
   }
 
   /**
+   * 复用 LanceDB 安全阈值切分文件子批次。
+   *
+   * Indexer 需要和这里使用同一套切分规则，
+   * 才能在“批量写 + 子批次确认”模式下保持中断可恢复语义一致。
+   */
+  static splitUpsertBatches<T extends { records: unknown[] }>(files: T[]): T[][] {
+    const BATCH_FILES = 50;
+    const BATCH_RECORDS = 5000;
+
+    const batches: T[][] = [];
+    let currentBatch: T[] = [];
+    let currentRecordCount = 0;
+
+    for (const file of files) {
+      if (
+        currentBatch.length >= BATCH_FILES ||
+        currentRecordCount + file.records.length > BATCH_RECORDS
+      ) {
+        if (currentBatch.length > 0) {
+          batches.push(currentBatch);
+        }
+        currentBatch = [];
+        currentRecordCount = 0;
+      }
+
+      currentBatch.push(file);
+      currentRecordCount += file.records.length;
+    }
+
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    return batches;
+  }
+
+  /**
    * 批量 upsert 多个文件（性能优化版，带分批机制）
    *
    * 流程：
@@ -161,33 +198,7 @@ export class VectorStore {
     if (!this.db) throw new Error('VectorStore not initialized');
     if (files.length === 0) return;
 
-    // 分批参数（经验值，避免 native 模块崩溃）
-    const BATCH_FILES = 50; // 每批最多 50 个文件
-    const BATCH_RECORDS = 5000; // 每批最多 5000 条 records
-
-    // 构建批次
-    const batches: Array<typeof files> = [];
-    let currentBatch: typeof files = [];
-    let currentRecordCount = 0;
-
-    for (const file of files) {
-      // 检查是否需要开始新批次
-      if (
-        currentBatch.length >= BATCH_FILES ||
-        currentRecordCount + file.records.length > BATCH_RECORDS
-      ) {
-        if (currentBatch.length > 0) {
-          batches.push(currentBatch);
-        }
-        currentBatch = [];
-        currentRecordCount = 0;
-      }
-      currentBatch.push(file);
-      currentRecordCount += file.records.length;
-    }
-    if (currentBatch.length > 0) {
-      batches.push(currentBatch);
-    }
+    const batches = VectorStore.splitUpsertBatches(files);
 
     // 逐批处理
     for (const batch of batches) {
