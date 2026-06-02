@@ -23,16 +23,16 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@alistar.max/coderecall-lang-typescript": "0.1.2",
-    "@alistar.max/coderecall-lang-kotlin": "0.1.2",
-    "@alistar.max/coderecall-lang-csharp": "0.1.2",
-    "@alistar.max/coderecall-lang-cpp": "0.1.2",
-    "@alistar.max/coderecall-lang-java": "0.1.2",
-    "@alistar.max/coderecall-lang-ruby": "0.1.2",
-    "@alistar.max/coderecall-lang-c": "0.1.2",
-    "@alistar.max/coderecall-lang-php": "0.1.2",
-    "@alistar.max/coderecall-lang-rust": "0.1.2",
-    "@alistar.max/coderecall-lang-swift": "0.1.2"
+    "@alistar.max/coderecall-lang-typescript": "0.1.3",
+    "@alistar.max/coderecall-lang-kotlin": "0.1.3",
+    "@alistar.max/coderecall-lang-csharp": "0.1.3",
+    "@alistar.max/coderecall-lang-cpp": "0.1.3",
+    "@alistar.max/coderecall-lang-java": "0.1.3",
+    "@alistar.max/coderecall-lang-ruby": "0.1.3",
+    "@alistar.max/coderecall-lang-c": "0.1.3",
+    "@alistar.max/coderecall-lang-php": "0.1.3",
+    "@alistar.max/coderecall-lang-rust": "0.1.3",
+    "@alistar.max/coderecall-lang-swift": "0.1.3"
   },
   "files": [
     "dist/**/*.js",

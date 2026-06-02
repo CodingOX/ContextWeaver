@@ -65,10 +65,11 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Build all packages
+      - name: Build all packages (plugins first, then lang-all)
         run: |
           pnpm build
-          pnpm -r build
+          pnpm -r --filter='!./packages/lang-all' build
+          pnpm --filter='./packages/lang-all' build
 
       - name: Verify versions match tag
         run: |
