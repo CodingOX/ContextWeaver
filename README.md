@@ -8,6 +8,8 @@
   <em>Semantic Code Retrieval for AI Agents — Hybrid Search • Graph Expansion • Token-Aware Packing</em>
 </p>
 
+> **致谢**：本项目基于 [hsingjui/ContextWeaver](https://github.com/hsingjui/ContextWeaver) 修改和扩展而来。衷心感谢原作者 [hsingjui](https://github.com/hsingjui) 的开创性工作与开源精神，为 ContextWeaver 打下了坚实基础。我们将在此基础上持续演进，为 AI 辅助编码社区提供更完善的代码库上下文检索体验。
+
 ---
 
 **ContextWeaver** 是一个面向 AI 代码助手的语义检索引擎。它把代码库索引成可检索的语义上下文，并通过混合搜索（向量 + 词法）、上下文扩展和 Token 感知打包，把更完整、更相关的代码片段交给 LLM。
@@ -37,20 +39,23 @@
 npm install -g @alistar.max/contextweaver
 ```
 
-主包默认具备 JavaScript、Python、Go 的 AST 分片能力，并会自动加载 TypeScript、Kotlin、Java、Rust 默认核心语言插件。默认核心插件仍保持独立包边界，避免把更多 grammar 直接并入主包内置 runtime。
-
 ### 默认核心支持
 
-安装主包后，下列语言默认可用，无需额外安装兼容分组包：
+安装主包后，下列语言默认具备 AST 分片能力，无需额外安装语言插件：
 
-- TypeScript
-- Kotlin
-- Java
-- Rust
+- JavaScript（主包内置）
+- Python（主包内置）
+- Go（主包内置）
+- TypeScript（默认核心插件，自动加载）
+- Kotlin（默认核心插件，自动加载）
+- Java（默认核心插件，自动加载）
+- Rust（默认核心插件，自动加载）
+
+> 默认核心插件（TypeScript、Kotlin、Java、Rust）保持独立包边界，避免把更多 grammar 直接并入主包内置 runtime；安装主包时它们会自动加载，用户无需额外操作。
 
 ### 按需安装语言包
 
-这些包属于按需语言插件，用来补齐默认核心支持以外语言的 AST 分片能力。未安装语言插件时，对应语言仍可索引和搜索，但会回退为纯文本分片。
+这些包属于按需语言插件，用来补齐默认核心支持以外语言的 AST 分片能力。**未安装语言插件时，对应语言仍可索引和搜索，但会回退为纯文本分片。**
 
 ```bash
 # C / C++ /  C#
@@ -64,8 +69,6 @@ npm install -g @alistar.max/contextweaver-lang-ruby
 npm install -g @alistar.max/contextweaver-lang-swift
 ```
 
-`@alistar.max/contextweaver-lang-all` 仅作为补充型聚合包保留；README 推荐路径是主包默认核心支持 + 按需单语言插件。
-
 ## ⚙️ 初始化配置
 
 ```bash
@@ -74,7 +77,9 @@ contextweaver init
 cw init
 ```
 
-初始化后编辑 `~/.contextweaver/.env`。README 面向新用户只展示多 key 写法；即使你现在只有一个 key，也建议使用 `_KEYS` 变量，后续扩容只需要追加逗号分隔的新 key。
+初始化后编辑 `~/.contextweaver/.env`。
+
+> **API Key 获取**：推荐到 [硅基流动（SiliconFlow）](https://siliconflow.cn) 注册账户，完成实名认证后 Embedding 和 Reranker API 均可免费使用。用量较大时可认证多个账户，创建多个 Key，利用 `EMBEDDINGS_API_KEYS` 变量实现请求级轮转，避免触发频率限制。
 
 ```bash
 # Embedding API 配置（必需）
@@ -90,21 +95,75 @@ RERANK_BASE_URL=https://api.siliconflow.cn/v1/rerank
 RERANK_MODEL=BAAI/bge-reranker-v2-m3
 RERANK_TOP_N=20
 
-# 索引忽略模式（可选，逗号分隔）
-# IGNORE_PATTERNS=.venv,node_modules
-
 # 显式包含模式（可选，逗号分隔；仅用于放行未知扩展名）
 # INCLUDE_PATTERNS=**/*.prompt,**/*.cue
 ```
 
-`EMBEDDINGS_API_KEY` 与 `RERANK_API_KEY` 是旧变量名，运行时仍兼容；新配置推荐使用 `_KEYS`，支持逗号分隔多 key 和请求级轮转。
+## 📖 使用方法
 
-如果你希望在项目内持久化 include 规则，可在项目根目录创建 `.contextweaverinclude`，每行一个 glob 规则：
+ContextWeaver 提供两种使用方式，可根据你的 AI 编码工具选择：
+
+### 方式一：Skill 加载（推荐 Claude Code 用户）
+
+将 `skills/contextweaver-search/` 目录复制到目标项目的 `.claude/skills/` 下即可【其他工具类似 skills 目录即可】**：
 
 ```bash
-**/*.prompt
-**/*.cue
+cp -r skills/contextweaver-search /path/to/your-project/.claude/skills/
 ```
+
+推荐在项目 或者 全局 CLAUDE.md 或者 AGENTS.md 上可以加一句类似的引导提示词：
+```
+contextweaver-search 是一个 通过 自然语言定位代码 的优先工具，用在：需要理解代码上下文、探索性搜索、或自然语言定位代码的场景
+
+**✅ 适用场景**：
+
+- 探索性搜索（不确定代码在哪个文件/目录）
+- 用自然语言描述要找的逻辑（如"XX核心流程"、"XX事件处理"）
+- 需要跨文件追踪调用链
+
+**❌ 不适用场景**：
+- 已知精确文件路径，直接读取即可
+- 简单的文本匹配搜索（用 grep/ripgrep 更快）
+```
+
+### 方式二：MCP 集成
+
+在 MCP 客户端（Claude、Codex、OpenCode 等）中配置 ContextWeaver 作为 MCP Server，获得 `codebase-retrieval` 工具的完整检索能力。
+
+**Claude / OpenCode 配置：**
+
+```json
+{
+  "mcpServers": {
+    "@alistar.max/contextweaver": {
+      "command": "contextweaver",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Codex CLI 配置**（`~/.codex/config.toml`）：
+
+```toml
+[mcp_servers."@alistar.max/contextweaver"]
+type = "stdio"
+command = "contextweaver"
+args = ["mcp"]
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+```
+
+MCP 模式下，`codebase-retrieval` 每次调用都会先执行自动索引检查：首次使用自动完整索引，后续自动增量索引。
+
+| 参数 | 类型 | 必需 | 描述 |
+|------|------|------|------|
+| `repo_path` | string | ✅ | 代码库根目录的绝对路径 |
+| `information_request` | string | ✅ | 自然语言形式的语义意图描述 |
+| `technical_terms` | string[] | ❌ | 精确技术术语，如类名、函数名、常量名 |
+| `source_code_only` | boolean | ❌ | 排除文档/配置类语言 |
+| `include_languages` | string[] | ❌ | 只包含指定语言 |
+| `exclude_languages` | string[] | ❌ | 排除指定语言 |
 
 ## 🖥️ CLI 使用
 
@@ -194,60 +253,12 @@ contextweaver tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl \
 
 该命令面向维护者和评测场景，用于 RRF 参数回放与自动调参。
 
-## 🔌 MCP 集成
+## 🔌 MCP 集成（参考）
 
-ContextWeaver 提供一个核心 MCP 工具：`codebase-retrieval`。
+MCP 配置详情和工具参数说明见上方「使用方法 → 方式二：MCP 集成」。以下为补充参考：
 
-### Claude / OpenCode 配置
-
-```json
-{
-  "mcpServers": {
-    "contextweaver": {
-      "command": "contextweaver",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-### Codex CLI 配置
-
-把下面内容加入 `~/.codex/config.toml`：
-
-```toml
-[mcp_servers.contextweaver]
-type = "stdio"
-command = "contextweaver"
-args = ["mcp"]
-startup_timeout_sec = 20
-tool_timeout_sec = 30
-```
-
-### MCP 工具参数
-
-| 参数 | 类型 | 必需 | 描述 |
-|------|------|------|------|
-| `repo_path` | string | ✅ | 代码库根目录的绝对路径 |
-| `information_request` | string | ✅ | 自然语言形式的语义意图描述 |
-| `technical_terms` | string[] | ❌ | 精确技术术语，如类名、函数名、常量名 |
-| `source_code_only` | boolean | ❌ | 排除文档/配置类语言 |
-| `include_languages` | string[] | ❌ | 只包含指定语言 |
-| `exclude_languages` | string[] | ❌ | 排除指定语言 |
-
-MCP 模式下，`codebase-retrieval` 每次调用都会先执行自动索引检查：首次使用自动完整索引，后续自动增量索引。
-
-### Claude Code Skill
-
-项目提供了 Claude Code 的 `contextweaver-search` skill（位于 `skills/contextweaver-search/SKILL.md`），教 Claude 如何正确使用 ContextWeaver CLI 进行语义搜索。Skill 涵盖环境检查、搜索策略决策流程、常见错误规避等最佳实践。
-
-将此 skill 安装到你的项目后，Claude 在探索代码时会自动遵循 ContextWeaver 的搜索规范——例如仅确定 100% 确定符号存在时才加 `--technical-terms`，理解 `--source-code-only` 与 `--include-languages` 互斥等。
-
-安装方式：将 `skills/contextweaver-search/` 目录复制到目标项目的 `.claude/skills/` 下即可：
-
-```bash
-cp -r skills/contextweaver-search /path/to/your-project/.claude/skills/
-```
+- MCP 模式下，`codebase-retrieval` 每次调用都会先执行自动索引检查：首次使用自动完整索引，后续自动增量索引。
+- ContextWeaver MCP Server 通过 `contextweaver mcp` 命令启动，通常不需要手动运行，客户端会自动启动。
 
 ## ✅ 测试流程
 
