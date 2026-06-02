@@ -8,6 +8,7 @@ import { isDev, isMcpMode } from '../config.js';
 const logLevel = isDev ? 'debug' : 'info';
 const logDir = path.join(os.homedir(), '.coderecall', 'logs');
 const LOG_RETENTION_DAYS = 7;
+const managedLogStreams = new Set<fs.WriteStream>();
 
 function ensureLogDir(dir: string): void {
   if (!fs.existsSync(dir)) {
@@ -83,6 +84,13 @@ function cleanupOldLogs(dir: string): void {
 // 自定义 Writable Stream 来格式化日志
 function createFormattedStream(filePath: string): Writable {
   const writeStream = fs.createWriteStream(filePath, { flags: 'a' });
+  managedLogStreams.add(writeStream);
+
+  const cleanup = () => {
+    managedLogStreams.delete(writeStream);
+  };
+  writeStream.once('close', cleanup);
+  writeStream.once('error', cleanup);
 
   return new Writable({
     write(
@@ -109,6 +117,15 @@ function createFormattedStream(filePath: string): Writable {
       } catch {
         writeStream.write(chunk.toString(), callback);
       }
+    },
+    final(callback) {
+      writeStream.end(callback);
+    },
+    destroy(error, callback) {
+      if (!writeStream.closed) {
+        writeStream.destroy();
+      }
+      callback(error);
     },
   });
 }
@@ -223,6 +240,41 @@ function createProdLogger(): pino.Logger {
 
 // 导出 logger 实例
 export const logger = isDev ? createDevLogger() : createProdLogger();
+
+/**
+ * 关闭 logger 持有的文件流。
+ *
+ * 当前 logger 是模块级单例，测试与长驻进程都需要显式回收文件句柄，
+ * 避免后续重建 logger 或跨日切换时残留旧 stream。
+ */
+export async function shutdownLogger(): Promise<void> {
+  const closing = Array.from(managedLogStreams).map(
+    (stream) =>
+      new Promise<void>((resolve) => {
+        if (stream.closed || stream.destroyed) {
+          managedLogStreams.delete(stream);
+          resolve();
+          return;
+        }
+
+        stream.once('close', () => {
+          managedLogStreams.delete(stream);
+          resolve();
+        });
+        stream.end();
+      }),
+  );
+
+  await Promise.all(closing);
+}
+
+export function __getOpenLogStreamCountForTest(): number {
+  return managedLogStreams.size;
+}
+
+export async function __shutdownLoggerForTest(): Promise<void> {
+  await shutdownLogger();
+}
 
 /**
  * 检查当前是否启用 debug 级别日志

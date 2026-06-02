@@ -360,8 +360,43 @@ export class VectorStore {
    * 关闭连接
    */
   async close(): Promise<void> {
+    // LanceDB JS SDK 在不同版本里可能把释放能力挂在 table/db 的 close/dispose/disconnect 上。
+    // 这里做能力探测，优先显式释放；若 SDK 不提供，则退回到仅清空引用。
+    await this.tryCloseResource(this.table);
+    await this.tryCloseResource(this.db);
     this.db = null;
     this.table = null;
+  }
+
+  /**
+   * 尝试关闭底层资源。
+   *
+   * 说明：
+   * - 并非所有 SDK 版本都暴露显式 close API
+   * - 因此这里只做能力探测，避免硬编码调用不存在的方法
+   */
+  private async tryCloseResource(resource: unknown): Promise<void> {
+    if (!resource || typeof resource !== 'object') {
+      return;
+    }
+
+    const candidate = resource as {
+      close?: () => Promise<void> | void;
+      dispose?: () => Promise<void> | void;
+      disconnect?: () => Promise<void> | void;
+    };
+
+    if (typeof candidate.close === 'function') {
+      await candidate.close();
+      return;
+    }
+    if (typeof candidate.dispose === 'function') {
+      await candidate.dispose();
+      return;
+    }
+    if (typeof candidate.disconnect === 'function') {
+      await candidate.disconnect();
+    }
   }
 }
 

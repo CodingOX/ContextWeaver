@@ -248,6 +248,16 @@ export function getRerankerClient(): RerankerClient {
   return defaultClient;
 }
 
+/**
+ * 重置默认 RerankerClient。
+ *
+ * MCP 长驻进程或同进程多轮查询中，配置更新后需要显式清理旧实例，
+ * 让下一次 getRerankerClient() 重新读取最新配置。
+ */
+export function resetRerankerClient(): void {
+  defaultClient = null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

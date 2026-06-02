@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { resetEmbeddingClient, resetRateLimitController } from '../api/embedding.js';
 import { getEmbeddingConfig } from '../config.js';
 import {
   batchDelete,
@@ -187,8 +188,13 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
 
     // ===== 向量索引 =====
     if (options.vectorIndex !== false) {
+      // 新一轮扫描应读取最新配置，并避免继承上一次任务的退避状态。
+      resetEmbeddingClient();
+      resetRateLimitController();
+
       const embeddingConfig = getEmbeddingConfig();
       const indexer = await getIndexer(projectId, embeddingConfig.dimensions);
+      indexer.resetEmbeddingClient();
 
       // 收集需要向量索引的文件：
       // 1. 新增/修改的文件

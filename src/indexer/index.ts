@@ -196,6 +196,16 @@ export class Indexer {
   }
 
   /**
+   * 清空索引器内部缓存的 EmbeddingClient。
+   *
+   * Indexer 会在单轮任务内复用 client 以避免重复构造；
+   * 但在新的 scan 轮次开始前，必须允许外部刷新配置快照。
+   */
+  resetEmbeddingClient(): void {
+    this.embeddingClient = null;
+  }
+
+  /**
    * 处理扫描结果，更新向量索引
    *
    * @param db SQLite 数据库实例

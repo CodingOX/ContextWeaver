@@ -391,6 +391,11 @@ export async function handleCodebaseRetrieval(
     return formatEnvMissingResponse(allMissingVars);
   }
 
+  // MCP 是长驻进程，每次工具调用都应重新读取 Reranker 配置快照，
+  // 避免用户更新 Key 后仍复用旧的模块级单例。
+  const { resetRerankerClient } = await import('../../api/reranker.js');
+  resetRerankerClient();
+
   // 1. 生成项目 ID（与 CLI 保持一致：路径 + 目录创建时间）
   const projectId = generateProjectId(repo_path);
 

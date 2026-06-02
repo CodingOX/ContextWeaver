@@ -90,6 +90,7 @@ export function applyPreRerankPerFileCap(
 
 /** 缓存预编译的 token 边界正则表达式 */
 const tokenBoundaryRegexCache = new Map<string, RegExp>();
+const TOKEN_BOUNDARY_REGEX_CACHE_MAX = 1000;
 
 /**
  * 获取或创建 token 边界正则表达式（带缓存）
@@ -99,11 +100,30 @@ const tokenBoundaryRegexCache = new Map<string, RegExp>();
 function getTokenBoundaryRegex(token: string): RegExp {
   let regex = tokenBoundaryRegexCache.get(token);
   if (!regex) {
+    // MCP 长驻进程会积累大量查询词，这里用简单 FIFO 上限避免缓存无限增长。
+    if (tokenBoundaryRegexCache.size >= TOKEN_BOUNDARY_REGEX_CACHE_MAX) {
+      const oldestKey = tokenBoundaryRegexCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        tokenBoundaryRegexCache.delete(oldestKey);
+      }
+    }
     const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     regex = new RegExp(`\\b${escaped}\\b`);
     tokenBoundaryRegexCache.set(token, regex);
   }
   return regex;
+}
+
+export function getTokenBoundaryRegexForTest(token: string): RegExp {
+  return getTokenBoundaryRegex(token);
+}
+
+export function __getTokenBoundaryRegexCacheSizeForTest(): number {
+  return tokenBoundaryRegexCache.size;
+}
+
+export function __resetTokenBoundaryRegexCacheForTest(): void {
+  tokenBoundaryRegexCache.clear();
 }
 
 export class SearchService {

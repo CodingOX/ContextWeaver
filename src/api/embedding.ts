@@ -334,6 +334,16 @@ function getRateLimitController(maxConcurrency: number): RateLimitController {
 }
 
 /**
+ * 重置全局速率限制控制器。
+ *
+ * 长驻进程中，新的索引/查询轮次如果需要以“干净状态”启动，
+ * 必须显式清掉上一次任务残留的退避与并发窗口。
+ */
+export function resetRateLimitController(): void {
+  globalRateLimitController = null;
+}
+
+/**
  * Embedding 客户端类
  */
 export class EmbeddingClient {
@@ -767,6 +777,15 @@ export function getEmbeddingClient(): EmbeddingClient {
     defaultClient = new EmbeddingClient();
   }
   return defaultClient;
+}
+
+/**
+ * 重置默认 EmbeddingClient。
+ *
+ * 用于在配置热更新后强制重新读取最新的环境变量快照。
+ */
+export function resetEmbeddingClient(): void {
+  defaultClient = null;
 }
 
 function sleep(ms: number): Promise<void> {
