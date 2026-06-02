@@ -14,7 +14,7 @@
 
 1. 在独立工作树执行（推荐 `@using-git-worktrees`）：
    ```bash
-   git worktree add ../ContextWeaver-retrieval-accuracy -b feat/retrieval-accuracy-p0-p1
+   git worktree add ../CodeRecall-retrieval-accuracy -b feat/retrieval-accuracy-p0-p1
    ```
 2. 全流程遵循 `@test-driven-development`：先失败测试，再最小实现。
 3. 完成前执行 `@verification-before-completion`：仅根据命令输出声明成功。

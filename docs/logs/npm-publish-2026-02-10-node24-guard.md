@@ -58,16 +58,16 @@ npm pack --dry-run
 
 ```bash
 # 1) 查看线上版本与标签
-npm view @alistar.max/contextweaver version dist-tags --json
+npm view @alistar.max/coderecall version dist-tags --json
 
 # 2) 在 Node 22 环境验证可安装
 nvm use 22
-npm i -g @alistar.max/contextweaver@latest
-contextweaver --version
+npm i -g @alistar.max/coderecall@latest
+coderecall --version
 
 # 3) 在 Node 24 环境验证被拦截（预期失败并提示）
 nvm use 24
-npm i -g @alistar.max/contextweaver@latest
+npm i -g @alistar.max/coderecall@latest
 ```
 
 预期：Node 22 安装成功并可执行；Node 24 安装阶段被守卫拦截且提示明确。

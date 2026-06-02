@@ -45,7 +45,7 @@
 - 复用指标函数，输出 best config + topN leaderboard。
 
 **Step 3: 提供 CLI 命令**
-- 新增 `contextweaver tune <dataset>`。
+- 新增 `coderecall tune <dataset>`。
 - 支持 `--target`、`--k`、`--top`。
 
 ### Task 3: P4-2 测试先行（隐式反馈闭环）
@@ -80,7 +80,7 @@
 - 与上一次 event 比较，推断 S1/S2/S3（最小信号集）。
 
 **Step 3: 新增 CLI 汇总命令**
-- `contextweaver feedback [path] --days 7 --top 10`
+- `coderecall feedback [path] --days 7 --top 10`
 - 输出：total events、zero-hit rate、implicit success rate、top reused files。
 
 ### Task 5: 验证与收尾

@@ -14,7 +14,7 @@
 
 1. 在独立工作树执行（推荐 `@using-git-worktrees`）：
    ```bash
-   git worktree add ../ContextWeaver-multi-key -b feat/multi-key-round-robin
+   git worktree add ../CodeRecall-multi-key -b feat/multi-key-round-robin
    ```
 2. 开发过程遵循 `@test-driven-development`：先写失败测试，再写最小实现。
 3. 完成前执行 `@verification-before-completion`：仅凭命令输出声明成功。
@@ -476,7 +476,7 @@ Expected: PASS，`dist` 正常产出
 Run:
 
 ```bash
-EMBEDDINGS_API_KEYS=key1,key2 RERANK_API_KEYS=key3,key4 contextweaver search
+EMBEDDINGS_API_KEYS=key1,key2 RERANK_API_KEYS=key3,key4 coderecall search
 ```
 
 Expected: 搜索流程可执行，日志可见请求正常发出（不打印明文 key）。

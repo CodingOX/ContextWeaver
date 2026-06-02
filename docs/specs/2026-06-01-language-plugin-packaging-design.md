@@ -1,4 +1,4 @@
-# ContextWeaver 语言插件命名与分层收口设计
+# CodeRecall 语言插件命名与分层收口设计
 
 日期：2026-06-01
 
@@ -6,9 +6,9 @@
 
 当前仓库同时存在以下三类语言插件：
 
-- 单语言包：`@alistar.max/contextweaver-lang-typescript`、`...-lang-java`、`...-lang-rust` 等
-- 聚合包：`@alistar.max/contextweaver-lang-all`
-- 历史兼容包：`@alistar.max/contextweaver-lang-ts21`、`@alistar.max/contextweaver-lang-ts22`
+- 单语言包：`@alistar.max/coderecall-lang-typescript`、`...-lang-java`、`...-lang-rust` 等
+- 聚合包：`@alistar.max/coderecall-lang-all`
+- 历史兼容包：`@alistar.max/coderecall-lang-ts21`、`@alistar.max/coderecall-lang-ts22`
 
 其中，`lang-ts21` / `lang-ts22` 实际表达的是 `tree-sitter` 兼容层，而不是 TypeScript 版本或 TypeScript 语言能力范围。这个命名会让用户误以为它们与 `lang-typescript` 属于同一语义维度，进而造成安装路径混乱。
 
@@ -197,9 +197,9 @@
 
 示例：
 
-- `npm install -g @alistar.max/contextweaver-lang-csharp`
-- `npm install -g @alistar.max/contextweaver-lang-cpp`
-- `npm install -g @alistar.max/contextweaver-lang-swift`
+- `npm install -g @alistar.max/coderecall-lang-csharp`
+- `npm install -g @alistar.max/coderecall-lang-cpp`
+- `npm install -g @alistar.max/coderecall-lang-swift`
 
 兼容包不再属于任何公开安装路径。
 

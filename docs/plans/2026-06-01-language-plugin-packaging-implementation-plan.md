@@ -60,10 +60,10 @@
 
 ```ts
 assert.deepEqual(DEFAULT_PLUGIN_CANDIDATES, [
-  '@alistar.max/contextweaver-lang-typescript',
-  '@alistar.max/contextweaver-lang-kotlin',
-  '@alistar.max/contextweaver-lang-java',
-  '@alistar.max/contextweaver-lang-rust',
+  '@alistar.max/coderecall-lang-typescript',
+  '@alistar.max/coderecall-lang-kotlin',
+  '@alistar.max/coderecall-lang-java',
+  '@alistar.max/coderecall-lang-rust',
 ]);
 ```
 
@@ -90,10 +90,10 @@ AssertionError: expected DEFAULT_PLUGIN_CANDIDATES to match new core plugin list
 
 ```ts
 export const DEFAULT_PLUGIN_CANDIDATES = [
-  '@alistar.max/contextweaver-lang-typescript',
-  '@alistar.max/contextweaver-lang-kotlin',
-  '@alistar.max/contextweaver-lang-java',
-  '@alistar.max/contextweaver-lang-rust',
+  '@alistar.max/coderecall-lang-typescript',
+  '@alistar.max/coderecall-lang-kotlin',
+  '@alistar.max/coderecall-lang-java',
+  '@alistar.max/coderecall-lang-rust',
 ] as const;
 ```
 
@@ -164,8 +164,8 @@ git commit -m "refactor: promote default core language plugins"
 在 `workspace-packages.test.ts` 的包清单里删除：
 
 ```ts
-{ dir: 'lang-ts21', name: '@alistar.max/contextweaver-lang-ts21' },
-{ dir: 'lang-ts22', name: '@alistar.max/contextweaver-lang-ts22' },
+{ dir: 'lang-ts21', name: '@alistar.max/coderecall-lang-ts21' },
+{ dir: 'lang-ts22', name: '@alistar.max/coderecall-lang-ts22' },
 ```
 
 在根 `package.json` 的 `test` 脚本里删除：
@@ -240,8 +240,8 @@ git commit -m "refactor: remove legacy tree-sitter compatibility packages"
 ```ts
 assert.match(readme, /主包默认具备 JavaScript、Python、Go/);
 assert.match(readme, /默认核心支持.*TypeScript.*Kotlin.*Java.*Rust/s);
-assert.doesNotMatch(readme, /contextweaver-lang-ts21/);
-assert.doesNotMatch(readme, /contextweaver-lang-ts22/);
+assert.doesNotMatch(readme, /coderecall-lang-ts21/);
+assert.doesNotMatch(readme, /coderecall-lang-ts22/);
 ```
 
 并根据最终决策决定是否继续断言 `lang-all`。
@@ -282,8 +282,8 @@ FAIL
 
 ```md
 兼容包仍保留给历史安装链路...
-npm install -g @alistar.max/contextweaver-lang-ts21
-npm install -g @alistar.max/contextweaver-lang-ts22
+npm install -g @alistar.max/coderecall-lang-ts21
+npm install -g @alistar.max/coderecall-lang-ts22
 ```
 
 如果保留 `lang-all`，只能保留为补充说明，不能再写成推荐路径。
@@ -338,10 +338,10 @@ only release/developer/migration files and spec/plan files remain before edits
 在 `release.yml` 中删除：
 
 ```text
-['@alistar.max/contextweaver-lang-ts21', 'packages/lang-ts21/package.json']
-['@alistar.max/contextweaver-lang-ts22', 'packages/lang-ts22/package.json']
-publish_if_needed "@alistar.max/contextweaver-lang-ts21" "packages/lang-ts21"
-publish_if_needed "@alistar.max/contextweaver-lang-ts22" "packages/lang-ts22"
+['@alistar.max/coderecall-lang-ts21', 'packages/lang-ts21/package.json']
+['@alistar.max/coderecall-lang-ts22', 'packages/lang-ts22/package.json']
+publish_if_needed "@alistar.max/coderecall-lang-ts21" "packages/lang-ts21"
+publish_if_needed "@alistar.max/coderecall-lang-ts22" "packages/lang-ts22"
 ```
 
 并把发布说明文案改成：
@@ -396,14 +396,14 @@ git commit -m "chore: remove legacy language packages from release workflow"
 
 ```md
 Breaking change:
-- removed @alistar.max/contextweaver-lang-ts21
-- removed @alistar.max/contextweaver-lang-ts22
+- removed @alistar.max/coderecall-lang-ts21
+- removed @alistar.max/coderecall-lang-ts22
 
 Replacement:
-- TypeScript -> @alistar.max/contextweaver-lang-typescript
-- Kotlin -> @alistar.max/contextweaver-lang-kotlin
-- Java -> @alistar.max/contextweaver-lang-java
-- Rust -> @alistar.max/contextweaver-lang-rust
+- TypeScript -> @alistar.max/coderecall-lang-typescript
+- Kotlin -> @alistar.max/coderecall-lang-kotlin
+- Java -> @alistar.max/coderecall-lang-java
+- Rust -> @alistar.max/coderecall-lang-rust
 ```
 
 - [ ] **Step 2: 跑关键测试切片**

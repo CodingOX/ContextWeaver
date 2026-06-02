@@ -23,11 +23,11 @@
 
 ### 2) 可选插件包
 
-- `@alistar.max/contextweaver-lang-ts21`
+- `@alistar.max/coderecall-lang-ts21`
   - 适配 `tree-sitter@^0.21`
   - 提供：TypeScript / Kotlin / C# / C++ / Java / Ruby
 
-- `@alistar.max/contextweaver-lang-ts22`
+- `@alistar.max/coderecall-lang-ts22`
   - 适配 `tree-sitter@^0.22`
   - 提供：C / PHP / Rust / Swift
 
@@ -42,14 +42,14 @@
 ### 仅安装主包（默认）
 
 ```bash
-npm install -g @alistar.max/contextweaver
+npm install -g @alistar.max/coderecall
 ```
 
 ### 按需安装插件
 
 ```bash
-npm install -g @alistar.max/contextweaver-lang-ts21
-npm install -g @alistar.max/contextweaver-lang-ts22
+npm install -g @alistar.max/coderecall-lang-ts21
+npm install -g @alistar.max/coderecall-lang-ts22
 ```
 
 ## 回滚方案
@@ -57,5 +57,5 @@ npm install -g @alistar.max/contextweaver-lang-ts22
 若插件机制出现回归，可临时回退到 `0.0.7`：
 
 ```bash
-npm install -g @alistar.max/contextweaver@0.0.7
+npm install -g @alistar.max/coderecall@0.0.7
 ```

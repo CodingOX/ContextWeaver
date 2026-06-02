@@ -2,22 +2,22 @@
 
 ## 变更目标
 
-- 将 npm 包归属切换为 `@alistar.max/contextweaver`
+- 将 npm 包归属切换为 `@alistar.max/coderecall`
 - 更新 README 安装命令为新包名
 - 尝试发布到 npm 官方仓库
 
 ## 关键改动
 
 - `package.json`
-  - `name`: `@alistar.max/contextweaver`
+  - `name`: `@alistar.max/coderecall`
   - `author`: `alistar.max`
-  - `repository/homepage`: 指向 `CodingOX/ContextWeaver`
+  - `repository/homepage`: 指向 `CodingOX/CodeRecall`
   - `publishConfig.access`: `public`
   - `scripts`
     - `build/dev/build:release` 仅构建 `src/index.ts`
     - 新增 `prepublishOnly` 与 `prepack`
 - `README.md`
-  - 安装命令更新为 `@alistar.max/contextweaver`
+  - 安装命令更新为 `@alistar.max/coderecall`
 
 ## 发布前校验
 
@@ -43,5 +43,5 @@ npm publish --access public --otp <6位动态码>
 发布成功后可验证：
 
 ```bash
-npm view @alistar.max/contextweaver version
+npm view @alistar.max/coderecall version
 ```

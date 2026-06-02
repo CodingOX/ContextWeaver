@@ -1,6 +1,6 @@
-# ContextWeaver 主包单独发版手册
+# CodeRecall 主包单独发版手册
 
-> 适用场景：本次改动仅涉及主包 `@alistar.max/contextweaver`，插件包无需发版。
+> 适用场景：本次改动仅涉及主包 `@alistar.max/coderecall`，插件包无需发版。
 
 ## 1. 什么时候用这个流程
 
@@ -65,7 +65,7 @@ npm publish --access public --no-git-checks --provenance
 将 `0.0.9` 替换为目标版本：
 
 ```bash
-npm view @alistar.max/contextweaver@0.0.9 version
+npm view @alistar.max/coderecall@0.0.9 version
 ```
 
 ### 5.2 安装冒烟
@@ -74,8 +74,8 @@ npm view @alistar.max/contextweaver@0.0.9 version
 TMP_DIR="$(mktemp -d)"
 cd "$TMP_DIR"
 npm init -y
-npm i @alistar.max/contextweaver@0.0.9
-npx contextweaver --version
+npm i @alistar.max/coderecall@0.0.9
+npx coderecall --version
 ```
 
 ## 6. 和插件发布脚本的关系

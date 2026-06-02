@@ -1,4 +1,4 @@
-# ContextWeaver 0.0.8 Release Notes
+# CodeRecall 0.0.8 Release Notes
 
 发布日期：2026-02-10
 
@@ -7,8 +7,8 @@
 - 支持 Node.js 24（`engines.node` 调整为 `>=20 <25`）。
 - 主包安装降噪：默认仅携带 `tree-sitter@^0.25` 生态语言（JavaScript / Python / Go）。
 - 新增可选语言插件：
-  - `@alistar.max/contextweaver-lang-ts21`（TypeScript / Kotlin / C# / C++ / Java / Ruby）
-  - `@alistar.max/contextweaver-lang-ts22`（C / PHP / Rust / Swift）
+  - `@alistar.max/coderecall-lang-ts21`（TypeScript / Kotlin / C# / C++ / Java / Ruby）
+  - `@alistar.max/coderecall-lang-ts22`（C / PHP / Rust / Swift）
 - 插件运行时动态发现：插件缺失或加载失败不会中断索引流程。
 
 ## 🔧 变更详情

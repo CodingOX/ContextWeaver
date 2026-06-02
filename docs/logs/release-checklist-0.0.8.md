@@ -1,10 +1,10 @@
-# ContextWeaver 0.0.8 发布可执行清单
+# CodeRecall 0.0.8 发布可执行清单
 
 > 目标版本：`0.0.8`
 >
-> npm 包名：`@alistar.max/contextweaver`
+> npm 包名：`@alistar.max/coderecall`
 >
-> 可选插件：`@alistar.max/contextweaver-lang-ts21`、`@alistar.max/contextweaver-lang-ts22`
+> 可选插件：`@alistar.max/coderecall-lang-ts21`、`@alistar.max/coderecall-lang-ts22`
 >
 > Node 版本约束：`>=20 <25`（含 Node 24）
 
@@ -31,7 +31,7 @@
 ## 阶段二：发布时（插件优先）
 
 - [ ] 最终确认 Node 版本：`node -v`（建议 `v22.x`）
-- [ ] 发布 `@alistar.max/contextweaver-lang-ts21`
+- [ ] 发布 `@alistar.max/coderecall-lang-ts21`
 
   ```bash
   cd packages/lang-ts21
@@ -39,7 +39,7 @@
   cd -
   ```
 
-- [ ] 发布 `@alistar.max/contextweaver-lang-ts22`
+- [ ] 发布 `@alistar.max/coderecall-lang-ts22`
 
   ```bash
   cd packages/lang-ts22
@@ -47,7 +47,7 @@
   cd -
   ```
 
-- [ ] 发布主包 `@alistar.max/contextweaver`
+- [ ] 发布主包 `@alistar.max/coderecall`
 
   ```bash
   npm publish --access public
@@ -56,21 +56,21 @@
 - [ ] 发布结果校验：
 
   ```bash
-  npm view @alistar.max/contextweaver version
-  npm view @alistar.max/contextweaver-lang-ts21 version
-  npm view @alistar.max/contextweaver-lang-ts22 version
+  npm view @alistar.max/coderecall version
+  npm view @alistar.max/coderecall-lang-ts21 version
+  npm view @alistar.max/coderecall-lang-ts22 version
   ```
 
 ## 阶段三：发布后回归
 
-- [ ] Node 22 冒烟：`nvm use 22 && npx -y @alistar.max/contextweaver@0.0.8 --help`
-- [ ] Node 20 冒烟：`nvm install 20 && nvm use 20 && npx -y @alistar.max/contextweaver@0.0.8 --help`
-- [ ] Node 24 冒烟：`nvm use 24 && npx -y @alistar.max/contextweaver@0.0.8 --help`
+- [ ] Node 22 冒烟：`nvm use 22 && npx -y @alistar.max/coderecall@0.0.8 --help`
+- [ ] Node 20 冒烟：`nvm install 20 && nvm use 20 && npx -y @alistar.max/coderecall@0.0.8 --help`
+- [ ] Node 24 冒烟：`nvm use 24 && npx -y @alistar.max/coderecall@0.0.8 --help`
 - [ ] 插件安装验证：
 
   ```bash
-  npm i -g @alistar.max/contextweaver-lang-ts21@0.0.8
-  npm i -g @alistar.max/contextweaver-lang-ts22@0.0.8
+  npm i -g @alistar.max/coderecall-lang-ts21@0.0.8
+  npm i -g @alistar.max/coderecall-lang-ts22@0.0.8
   ```
 
 - [ ] 检查安装日志中无 `tree-sitter` peer 冲突 warn
@@ -89,6 +89,6 @@
 - [ ] 如线上出现严重兼容问题：
 
   ```bash
-  npm dist-tag add @alistar.max/contextweaver@0.0.7 latest
-  npm deprecate @alistar.max/contextweaver@0.0.8 "0.0.8 存在问题，请回退到 0.0.7"
+  npm dist-tag add @alistar.max/coderecall@0.0.7 latest
+  npm deprecate @alistar.max/coderecall@0.0.8 "0.0.8 存在问题，请回退到 0.0.7"
   ```

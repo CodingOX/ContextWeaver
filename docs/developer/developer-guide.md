@@ -1,4 +1,4 @@
-# ContextWeaver 开发者指南
+# CodeRecall 开发者指南
 
 > 本文承接 README 中的开发者专用内容，聚焦回归测试、评测调参与维护者发版流程。
 
@@ -37,7 +37,7 @@ npm run test:benchmark
 npm run benchmark:tune
 
 # 通过 CLI 调参（支持自定义 target/k/grid）
-contextweaver tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl --target mrr --k 1,3,5 --top 5
+coderecall tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl --target mrr --k 1,3,5 --top 5
 ```
 
 调参数据集最小字段：
@@ -47,7 +47,7 @@ contextweaver tune tests/benchmark/fixtures/sample-auto-tune-dataset.jsonl --tar
 
 ```bash
 # 查看最近 7 天隐式反馈摘要
-contextweaver feedback . --days 7 --top 10
+coderecall feedback . --days 7 --top 10
 ```
 
 输出包含：`totalEvents`、`zeroHitRate`、`implicitSuccessRate`
@@ -57,10 +57,10 @@ contextweaver feedback . --days 7 --top 10
 
 ```bash
 # 检查向量索引与 chunks_fts 一致性
-contextweaver doctor .
+coderecall doctor .
 
 # 自动修复：删除 chunks_fts 中无对应向量的孤儿记录
-contextweaver doctor . --repair
+coderecall doctor . --repair
 ```
 
 ## 5. 发布（维护者）

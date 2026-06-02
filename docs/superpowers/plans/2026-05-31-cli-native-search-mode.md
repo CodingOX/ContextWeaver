@@ -95,7 +95,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 test('search command prints friendly config error via CLI', async () => {
-  const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), 'contextweaver-cli-home-'));
+  const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), 'coderecall-cli-home-'));
   try {
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts', 'search', '--query', 'auth flow'], {
       cwd: process.cwd(),
@@ -133,17 +133,17 @@ git commit -m "test: capture current cli search baseline"
 - [ ] **Step 1: 编写 `ensureDefaultEnvFile` 失败测试**
 
 ```ts
-test('ensureDefaultEnvFile creates ~/.contextweaver/.env when absent', async () => {
+test('ensureDefaultEnvFile creates ~/.coderecall/.env when absent', async () => {
   const { ensureDefaultEnvFile } = await import('../src/app/ensureDefaultEnvFile.ts');
-  const result = await ensureDefaultEnvFile('/tmp/contextweaver-test-home/.contextweaver');
+  const result = await ensureDefaultEnvFile('/tmp/coderecall-test-home/.coderecall');
   assert.equal(result.created, true);
-  assert.match(result.envFile, /\.contextweaver\/\.env$/);
+  assert.match(result.envFile, /\.coderecall\/\.env$/);
 });
 
 test('ensureIndexed returns wasIndexed=false on first scan', async () => {
   const { ensureIndexed } = await import('../src/app/ensureIndexed.ts');
-  const result = await ensureIndexed('/tmp/contextweaver-empty-repo', 'project-123', undefined, {
-    baseDir: '/tmp/contextweaver-index-base',
+  const result = await ensureIndexed('/tmp/coderecall-empty-repo', 'project-123', undefined, {
+    baseDir: '/tmp/coderecall-index-base',
     withLock: async (_projectId, _operation, fn) => fn(),
     scan: async () => ({
       totalFiles: 0,
@@ -752,9 +752,9 @@ git commit -m "feat: add code-only mode to search cli"
 - [ ] **Step 1: 更新 README 中的 CLI 用法**
 
 ```md
-contextweaver search --query "How is authentication flow handled?"
-contextweaver search --query "How is authentication flow handled?" --json
-contextweaver search --query "How is authentication flow handled?" --code-only
+coderecall search --query "How is authentication flow handled?"
+coderecall search --query "How is authentication flow handled?" --json
+coderecall search --query "How is authentication flow handled?" --code-only
 ```
 
 - [ ] **Step 2: 运行基础语言支持回归**

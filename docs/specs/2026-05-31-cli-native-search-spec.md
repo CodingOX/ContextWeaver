@@ -3,15 +3,15 @@
 > 状态：Draft
 > 日期：2026-05-31
 > 作者：Codex
-> 目标读者：ContextWeaver 核心维护者、CLI/MCP 使用方
+> 目标读者：CodeRecall 核心维护者、CLI/MCP 使用方
 
 **一、背景**
 
 当前项目同时提供 3 个入口：
 
-- `contextweaver index`
-- `contextweaver mcp`
-- `contextweaver search`
+- `coderecall index`
+- `coderecall mcp`
+- `coderecall search`
 
 其中 `search` 命令并不是原生 CLI 语义，而是直接复用了 `handleCodebaseRetrieval()`。这意味着：
 
@@ -345,7 +345,7 @@ export interface SearchFilter {
 CLI 增加显式开关：
 
 ```bash
-contextweaver search --query "认证流程" --code-only
+coderecall search --query "认证流程" --code-only
 ```
 
 语义：
@@ -440,7 +440,7 @@ MCP: 包装为 { content: [{ type: 'text', text }] }
 推荐保留并增强如下用法：
 
 ```bash
-contextweaver search \
+coderecall search \
   --repo-path /path/to/repo \
   --information-request "How is authentication flow handled?" \
   --technical-terms "AuthService,login"
@@ -451,7 +451,7 @@ contextweaver search \
 **1. 基础文本输出**
 
 ```bash
-contextweaver search \
+coderecall search \
   --information-request "Trace the login flow"
 ```
 
@@ -464,7 +464,7 @@ contextweaver search \
 源码限定模式：
 
 ```bash
-contextweaver search \
+coderecall search \
   --query "Trace the login flow" \
   --code-only
 ```
@@ -478,7 +478,7 @@ contextweaver search \
 **2. JSON 输出**
 
 ```bash
-contextweaver search \
+coderecall search \
   --information-request "Trace the login flow" \
   --json
 ```
@@ -524,8 +524,8 @@ contextweaver search \
 建议预留以下选项，但可以分阶段落地：
 
 ```bash
-contextweaver search --information-request "..." --no-index
-contextweaver search --information-request "..." --force-index
+coderecall search --information-request "..." --no-index
+coderecall search --information-request "..." --force-index
 ```
 
 语义建议：
@@ -547,7 +547,7 @@ contextweaver search --information-request "..." --force-index
 为提升 CLI 可读性，建议逐步增加别名：
 
 ```bash
-contextweaver search \
+coderecall search \
   --query "Trace the login flow" \
   --term AuthService \
   --term login
@@ -598,8 +598,8 @@ contextweaver search \
 
 本次改造需要保持以下兼容：
 
-1. `contextweaver mcp` 行为不变。
-2. 现有 `contextweaver search` 基本参数继续可用。
+1. `coderecall mcp` 行为不变。
+2. 现有 `coderecall search` 基本参数继续可用。
 3. 搜索结果核心语义不变，变化仅限入口分层和输出格式能力增强。
 4. 自动增量扫描仍然默认开启。
 5. 未显式开启 `--code-only` 时，文档仍会像现在一样参与搜索。

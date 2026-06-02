@@ -1,6 +1,6 @@
 # 检索准确性优化 TODO（2026-02-11）
 
-> 范围：ContextWeaver 检索链路（召回、融合、Rerank、索引与评测）
+> 范围：CodeRecall 检索链路（召回、融合、Rerank、索引与评测）
 
 ## P0（立即执行）
 
