@@ -114,7 +114,7 @@ const ZEN_CONFIG_OVERRIDE: Partial<SearchConfig> = {
 // 自动索引逻辑
 // ===========================================
 
-const BASE_DIR = path.join(os.homedir(), '.contextweaver');
+const BASE_DIR = path.join(os.homedir(), '.coderecall');
 const INDEX_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_RAW_TOP_N = 5;
 const MAX_RAW_TOP_N = 20;
@@ -223,7 +223,7 @@ interface RawCodeBlock {
 /**
  * 确保默认 .env 文件存在
  *
- * 如果 ~/.contextweaver/.env 不存在，则创建包含默认配置的文件
+ * 如果 ~/.coderecall/.env 不存在，则创建包含默认配置的文件
  */
 async function ensureDefaultEnvFile(): Promise<void> {
   const configDir = BASE_DIR;
@@ -826,11 +826,11 @@ function formatEnvMissingResponse(missingVars: string[]): {
   content: Array<{ type: 'text'; text: string }>;
   isError: true;
 } {
-  const configPath = '~/.contextweaver/.env';
+  const configPath = '~/.coderecall/.env';
 
   const text = `## ⚠️ 配置缺失
 
-ContextWeaver 需要配置 Embedding API 才能工作。
+CodeRecall 需要配置 Embedding API 才能工作。
 
 ### 缺失的环境变量
 ${missingVars.map((v) => `- \`${v}\``).join('\n')}

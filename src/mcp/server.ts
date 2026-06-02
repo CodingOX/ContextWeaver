@@ -1,5 +1,5 @@
 /**
- * ContextWeaver MCP Server
+ * CodeRecall MCP Server
  *
  * 提供代码库检索能力的 Model Context Protocol 服务器
  */
@@ -14,7 +14,7 @@ import { codebaseRetrievalSchema, handleCodebaseRetrieval } from './tools/index.
 // 服务器配置
 // ===========================================
 
-const SERVER_NAME = 'contextweaver';
+const SERVER_NAME = 'coderecall';
 
 // ===========================================
 // 工具定义

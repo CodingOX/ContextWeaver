@@ -11,7 +11,7 @@ import {
   initFilesFts,
 } from '../search/fts.js';
 
-const BASE_DIR = path.join(os.homedir(), '.contextweaver');
+const BASE_DIR = path.join(os.homedir(), '.coderecall');
 
 /**
  * 文件元数据接口

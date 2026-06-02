@@ -1,22 +1,22 @@
 {
-  "name": "@alistar.max/contextweaver",
+  "name": "@alistar.max/coderecall",
   "version": "0.1.2",
   "description": "A context weaving tool for LLMs",
   "license": "MIT",
   "author": "alistar.max",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CodingOX/ContextWeaver.git"
+    "url": "git+https://github.com/CodingOX/CodeRecall.git"
   },
-  "homepage": "https://github.com/CodingOX/ContextWeaver#readme",
+  "homepage": "https://github.com/CodingOX/CodeRecall#readme",
   "private": false,
   "publishConfig": {
     "access": "public"
   },
   "type": "module",
   "bin": {
-    "contextweaver": "dist/index.js",
-    "cw": "dist/index.js"
+    "coderecall": "dist/index.js",
+    "cr": "dist/index.js"
   },
   "files": [
     "scripts/check-node-version.js",

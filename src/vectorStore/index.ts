@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as lancedb from '@lancedb/lancedb';
 
-const BASE_DIR = path.join(os.homedir(), '.contextweaver');
+const BASE_DIR = path.join(os.homedir(), '.coderecall');
 
 // ===========================================
 // 类型定义

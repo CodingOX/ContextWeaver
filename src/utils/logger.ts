@@ -6,7 +6,7 @@ import pino from 'pino';
 import { isDev, isMcpMode } from '../config.js';
 
 const logLevel = isDev ? 'debug' : 'info';
-const logDir = path.join(os.homedir(), '.contextweaver', 'logs');
+const logDir = path.join(os.homedir(), '.coderecall', 'logs');
 const LOG_RETENTION_DAYS = 7;
 
 function ensureLogDir(dir: string): void {
@@ -161,7 +161,7 @@ function createConsoleStream(): Writable {
 // Logger 创建
 // =========================================
 
-// 开发环境：写入 ~/.contextweaver/logs + 控制台输出
+// 开发环境：写入 ~/.coderecall/logs + 控制台输出
 function createDevLogger(): pino.Logger {
   ensureLogDir(logDir);
 
@@ -177,7 +177,7 @@ function createDevLogger(): pino.Logger {
   return pino(
     {
       level: logLevel,
-      name: 'contextweaver',
+      name: 'coderecall',
     },
     // MCP 模式下禁用控制台输出，避免污染 STDIO 协议流
     isMcpMode
@@ -189,7 +189,7 @@ function createDevLogger(): pino.Logger {
   );
 }
 
-// 生产环境：写入 ~/.contextweaver/logs + 控制台输出（不依赖 pino-pretty）
+// 生产环境：写入 ~/.coderecall/logs + 控制台输出（不依赖 pino-pretty）
 function createProdLogger(): pino.Logger {
   ensureLogDir(logDir);
 
@@ -205,7 +205,7 @@ function createProdLogger(): pino.Logger {
   return pino(
     {
       level: logLevel,
-      name: 'contextweaver',
+      name: 'coderecall',
     },
     // MCP 模式下禁用控制台输出，避免污染 STDIO 协议流
     isMcpMode

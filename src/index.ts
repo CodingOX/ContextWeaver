@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.resolve(__dirname, '../package.json');
 const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'));
 
-const cli = cac('contextweaver');
+const cli = cac('coderecall');
 
 // 自定义版本输出，只显示版本号
 if (process.argv.includes('-v') || process.argv.includes('--version')) {
@@ -29,11 +29,11 @@ if (process.argv.includes('-v') || process.argv.includes('--version')) {
   process.exit(0);
 }
 
-cli.command('init', '初始化 ContextWeaver 配置').action(async () => {
-  const configDir = path.join(os.homedir(), '.contextweaver');
+cli.command('init', '初始化 CodeRecall 配置').action(async () => {
+  const configDir = path.join(os.homedir(), '.coderecall');
   const envFile = path.join(configDir, '.env');
 
-  logger.info('开始初始化 ContextWeaver...');
+  logger.info('开始初始化 CodeRecall...');
 
   // 创建配置目录
   try {
@@ -340,7 +340,7 @@ cli
 
       if (report.missingInFts.length > 0) {
         logger.warn(
-          `检测到 ${report.missingInFts.length} 条向量记录未进入 chunks_fts（建议执行 contextweaver index --force 或增量索引）`,
+          `检测到 ${report.missingInFts.length} 条向量记录未进入 chunks_fts（建议执行 coderecall index --force 或增量索引）`,
         );
       }
 

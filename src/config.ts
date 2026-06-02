@@ -5,7 +5,7 @@
  *
  * 加载策略：
  * - 开发环境 (NODE_ENV !== "production"): 加载项目根目录的 .env 文件
- * - 生产环境 (NODE_ENV === "production"): 加载 ~/.contextweaver/.env 文件
+ * - 生产环境 (NODE_ENV === "production"): 加载 ~/.coderecall/.env 文件
  *
  * 此模块必须在应用启动时最先导入，以确保环境变量在其他模块加载前可用。
  */
@@ -19,10 +19,10 @@ import dotenv from 'dotenv';
 
 const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev';
 
-// MCP 模式检测：通过命令行参数判断（contextweaver mcp）
+// MCP 模式检测：通过命令行参数判断（coderecall mcp）
 export const isMcpMode = process.argv[2] === 'mcp';
 
-export const DEFAULT_ENV_TEMPLATE = `# ContextWeaver 示例环境变量配置文件
+export const DEFAULT_ENV_TEMPLATE = `# CodeRecall 示例环境变量配置文件
 
 # Embedding API 配置（必需）
 # 推荐使用 KEYS（逗号分隔多 key），方便后期扩展限速轮转
@@ -55,10 +55,10 @@ function loadEnv(): void {
   const candidates = isDev
     ? [
         path.join(process.cwd(), '.env'), // 1. 当前目录（开发用）
-        path.join(os.homedir(), '.contextweaver', '.env'), // 2. 用户配置目录（回退）
+        path.join(os.homedir(), '.coderecall', '.env'), // 2. 用户配置目录（回退）
       ]
     : [
-        path.join(os.homedir(), '.contextweaver', '.env'), // 生产环境只用用户配置
+        path.join(os.homedir(), '.coderecall', '.env'), // 生产环境只用用户配置
       ];
 
   // 找到第一个存在的文件

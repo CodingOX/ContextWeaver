@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { logger } from './logger.js';
 
-const BASE_DIR = path.join(os.homedir(), '.contextweaver');
+const BASE_DIR = path.join(os.homedir(), '.coderecall');
 const LOCK_CHECK_INTERVAL_MS = 100; // 检查间隔
 const LOCK_WRITE_GRACE_MS = 2000; // 锁文件写入宽限期，避免误删刚创建的锁
 
