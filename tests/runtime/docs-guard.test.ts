@@ -10,7 +10,7 @@ assert.match(readme, /Kotlin/);
 assert.match(readme, /Java/);
 assert.match(readme, /Rust/);
 assert.match(readme, /@alistar\.max\/coderecall-lang-csharp/);
-assert.match(readme, /@alistar\.max\/coderecall-lang-all/);
+assert.doesNotMatch(readme, /@alistar\.max\/coderecall-lang-all/);
 assert.doesNotMatch(readme, /@alistar\.max\/coderecall-lang-ts21/);
 assert.doesNotMatch(readme, /@alistar\.max\/coderecall-lang-ts22/);
 assert.match(readme, /Node\.js >= 20 且 < 24/);
