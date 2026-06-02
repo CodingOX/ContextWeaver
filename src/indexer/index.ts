@@ -59,10 +59,7 @@ export const BATCH_CHUNKS = 400;
  * 目标：控制每批 Embedding 请求的并发数在可控范围。
  * BATCH_CHUNKS=400 → 每批最多 20 个 API 并发请求 (400÷20 chunk/req)。
  */
-export function splitIntoChunkBatches(
-  files: FileToIndex[],
-  maxChunks: number,
-): FileToIndex[][] {
+export function splitIntoChunkBatches(files: FileToIndex[], maxChunks: number): FileToIndex[][] {
   const batches: FileToIndex[][] = [];
   let current: FileToIndex[] = [];
   let currentChunkCount = 0;
@@ -419,24 +416,14 @@ export class Indexer {
           }
 
           // 单文件写入 LanceDB
-          await this.vectorStore!.batchUpsertFiles([
-            { path: file.path, hash: file.hash, records },
-          ]);
+          await this.vectorStore!.batchUpsertFiles([{ path: file.path, hash: file.hash, records }]);
           successFiles.push({ path: file.path, hash: file.hash });
           // 只有向量写入成功后，才把对应 FTS 文档加入成功集合
           successFtsChunks.push(...fileFtsChunks);
         } catch (err) {
           const error = err as { message?: string; stack?: string };
-          logger.error(
-            { path: file.path, error: error.message },
-            '写入 LanceDB 失败',
-          );
-          // 清理可能已写入的旧向量
-          try {
-            await this.vectorStore!.deleteFile(file.path);
-          } catch {
-            /* 尽力清理，忽略二次错误 */
-          }
+          logger.error({ path: file.path, error: error.message }, '写入 LanceDB 失败');
+          // 不删除旧向量，保留单调更新语义；后续通过 healing 再次补齐新版本。
           errorFiles.push(file.path);
         }
       }
@@ -462,10 +449,7 @@ export class Indexer {
       totalErrors += errorFiles.length;
     }
 
-    logger.info(
-      { success: totalSuccess, errors: totalErrors },
-      '批量索引完成',
-    );
+    logger.info({ success: totalSuccess, errors: totalErrors }, '批量索引完成');
 
     return { success: totalSuccess, errors: totalErrors };
   }
