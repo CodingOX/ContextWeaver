@@ -177,6 +177,42 @@ test('网络重试时应切换到下一个 key', async () => {
   }
 });
 
+test('每个 key 应持有独立的速率限制状态，不共享降级窗口', async () => {
+  const client = new EmbeddingClient({
+    ...TEST_CONFIG,
+    apiKey: 'legacy-key',
+    apiKeys: ['pool-key-1', 'pool-key-2'],
+    maxConcurrency: 4,
+    maxRpm: 2000,
+    maxTpm: 500000,
+    keyConfigs: [
+      { apiKey: 'pool-key-1', maxConcurrency: 1, maxRpm: 100, maxTpm: 1000 },
+      { apiKey: 'pool-key-2', maxConcurrency: 3, maxRpm: 300, maxTpm: 3000 },
+    ],
+  } as any);
+
+  const rateLimiters = (client as any).rateLimitersByKey as Map<string, any>;
+  assert.equal(rateLimiters.size, 2, '每个 key 都应有单独的 limiter');
+
+  const first = rateLimiters.get('pool-key-1');
+  const second = rateLimiters.get('pool-key-2');
+
+  assert.ok(first, 'key-1 limiter 应存在');
+  assert.ok(second, 'key-2 limiter 应存在');
+  assert.notEqual(first, second, '不同 key 不应复用同一个 limiter 实例');
+
+  first['currentConcurrency'] = 1;
+  first['backoffMs'] = 20000;
+
+  const firstStatus = first.getStatus();
+  const secondStatus = second.getStatus();
+
+  assert.equal(firstStatus.currentConcurrency, 1);
+  assert.equal(firstStatus.backoffMs, 20000);
+  assert.equal(secondStatus.currentConcurrency, 3, '另一把 key 不应受降级影响');
+  assert.equal(secondStatus.backoffMs, 5000, '另一把 key 应保持初始退避窗口');
+});
+
 test('批处理中某批次 403 失败后，onProgress 不再被调用', async () => {
   const client = new EmbeddingClient({ ...TEST_CONFIG, maxConcurrency: 5 });
   const originalFetch = globalThis.fetch;

@@ -510,27 +510,32 @@ class RateLimitController {
   }
 }
 
-/** 全局速率限制控制器实例 */
-let globalRateLimitController: RateLimitController | null = null;
+/** 当前轮次缓存的“每个 key 一个 limiter”映射 */
+let globalRateLimitControllersByKey: Map<string, RateLimitController> | null = null;
 
-/**
- * 获取或创建全局速率限制控制器
- */
-function getRateLimitController(
+function getRateLimitControllerByKey(
+  apiKey: string,
   maxConcurrency: number,
   maxRpm?: number,
   maxTpm?: number,
   estimatedTokensPerRequest?: number,
 ): RateLimitController {
-  if (!globalRateLimitController) {
-    globalRateLimitController = new RateLimitController(
+  if (!globalRateLimitControllersByKey) {
+    globalRateLimitControllersByKey = new Map();
+  }
+
+  let controller = globalRateLimitControllersByKey.get(apiKey);
+  if (!controller) {
+    controller = new RateLimitController(
       maxConcurrency,
       maxRpm,
       maxTpm,
       estimatedTokensPerRequest,
     );
+    globalRateLimitControllersByKey.set(apiKey, controller);
   }
-  return globalRateLimitController;
+
+  return controller;
 }
 
 /**
@@ -540,7 +545,7 @@ function getRateLimitController(
  * 必须显式清掉上一次任务残留的退避与并发窗口。
  */
 export function resetRateLimitController(): void {
-  globalRateLimitController = null;
+  globalRateLimitControllersByKey = null;
 }
 
 /**
@@ -548,8 +553,8 @@ export function resetRateLimitController(): void {
  */
 export class EmbeddingClient {
   private config: EmbeddingConfig;
-  private rateLimiter: RateLimitController;
   private readonly apiKeyPool: string[];
+  private readonly rateLimitersByKey: Map<string, RateLimitController>;
   private nextApiKeyIndex = 0;
   /** 坏 Key 冷却表: keyIndex → 解禁时间戳 (ms)，过期后自动恢复 */
   private badKeys = new Map<number, number>();
@@ -558,12 +563,8 @@ export class EmbeddingClient {
 
   constructor(config?: EmbeddingConfig) {
     this.config = config || getEmbeddingConfig();
-    this.rateLimiter = getRateLimitController(
-      this.config.maxConcurrency,
-      this.config.maxRpm,
-      this.config.maxTpm,
-    );
     this.apiKeyPool = this.buildApiKeyPool();
+    this.rateLimitersByKey = this.buildRateLimitersByKey();
   }
 
   /**
@@ -579,6 +580,27 @@ export class EmbeddingClient {
     }
 
     return [this.config.apiKey];
+  }
+
+  private buildRateLimitersByKey(): Map<string, RateLimitController> {
+    const keyConfigs = this.config.keyConfigs ?? [];
+    const configByKey = new Map(keyConfigs.map((item) => [item.apiKey, item]));
+    const limiters = new Map<string, RateLimitController>();
+
+    for (const apiKey of this.apiKeyPool) {
+      const keyConfig = configByKey.get(apiKey);
+      limiters.set(
+        apiKey,
+        getRateLimitControllerByKey(
+          apiKey,
+          keyConfig?.maxConcurrency ?? this.config.maxConcurrency,
+          keyConfig?.maxRpm ?? this.config.maxRpm,
+          keyConfig?.maxTpm ?? this.config.maxTpm,
+        ),
+      );
+    }
+
+    return limiters;
   }
 
   /**
@@ -696,35 +718,45 @@ export class EmbeddingClient {
         throw new Error('Embedding 批处理已中止');
       }
 
-      await this.rateLimiter.acquire();
-
-      if (signal?.aborted) {
-        this.rateLimiter.releaseFailure();
-        throw new Error('Embedding 批处理已中止');
-      }
-
       // 首次进入或 401 切 Key 后重新取 Key
       if (currentKeyIndex === null) {
         currentKeyIndex = this.getNextKeyIndex();
         if (currentKeyIndex < 0) {
-          this.rateLimiter.releaseFailure();
           throw new Error('所有 Embedding API Key 均处于认证失败冷却期');
         }
         currentApiKey = this.apiKeyPool[currentKeyIndex];
       }
 
       if (currentApiKey === null) {
-        this.rateLimiter.releaseFailure();
         throw new Error('未获取到可用 Embedding API Key');
       }
 
+      const rateLimiter = this.rateLimitersByKey.get(currentApiKey);
+      if (!rateLimiter) {
+        throw new Error(`未获取到 API Key 对应的速率限制器: ${currentApiKey}`);
+      }
+
+      await rateLimiter.acquire();
+
+      if (signal?.aborted) {
+        rateLimiter.releaseFailure();
+        throw new Error('Embedding 批处理已中止');
+      }
+
       try {
-        const result = await this.processBatch(texts, startIndex, progress, signal, currentApiKey);
-        this.rateLimiter.releaseSuccess();
+        const result = await this.processBatch(
+          texts,
+          startIndex,
+          progress,
+          signal,
+          currentApiKey,
+          rateLimiter,
+        );
+        rateLimiter.releaseSuccess();
         return result;
       } catch (err) {
         if (signal?.aborted) {
-          this.rateLimiter.releaseFailure();
+          rateLimiter.releaseFailure();
           throw new Error('Embedding 批处理已中止');
         }
 
@@ -736,8 +768,8 @@ export class EmbeddingClient {
         const isAuthErr = this.isAuthError(err);
 
         if (isRateLimited) {
-          this.rateLimiter.releaseForRetry();
-          await this.rateLimiter.triggerRateLimit();
+          rateLimiter.releaseForRetry();
+          await rateLimiter.triggerRateLimit();
           networkRetries = 0;
         } else if (isNetworkError && networkRetries < MAX_NETWORK_RETRIES) {
           networkRetries++;
@@ -751,7 +783,7 @@ export class EmbeddingClient {
             },
             '网络错误，准备重试',
           );
-          this.rateLimiter.releaseForRetry();
+          rateLimiter.releaseForRetry();
           // 保留现有契约：网络重试会轮询到下一个 Key，而不是固定复用当前 Key。
           currentKeyIndex = null;
           currentApiKey = null;
@@ -770,14 +802,14 @@ export class EmbeddingClient {
             );
             currentKeyIndex = null;
             currentApiKey = null;
-            this.rateLimiter.releaseForRetry();
+            rateLimiter.releaseForRetry();
             networkRetries = 0;
           } else {
-            this.rateLimiter.releaseFailure();
+            rateLimiter.releaseFailure();
             throw err;
           }
         } else if (isPayloadTooLarge && texts.length > 1) {
-          this.rateLimiter.releaseForRetry();
+          rateLimiter.releaseForRetry();
 
           const splitIndex = Math.ceil(texts.length / 2);
           const leftTexts = texts.slice(0, splitIndex);
@@ -810,7 +842,7 @@ export class EmbeddingClient {
           );
           return [...leftResults, ...rightResults];
         } else {
-          this.rateLimiter.releaseFailure();
+          rateLimiter.releaseFailure();
 
           if (isNetworkError) {
             logger.error({ error: errorMessage, retries: networkRetries }, '网络错误重试次数耗尽');
@@ -920,6 +952,7 @@ export class EmbeddingClient {
     progress: ProgressTracker,
     signal: AbortSignal | undefined,
     apiKey: string,
+    rateLimiter: RateLimitController,
   ): Promise<EmbeddingResult[]> {
     const requestBody: EmbeddingRequest = {
       model: this.config.model,
@@ -955,7 +988,7 @@ export class EmbeddingClient {
 
     // 报告实际 Token 消耗，更新 TPM EMA 估算
     if (data.usage?.total_tokens) {
-      this.rateLimiter.reportTokens(data.usage.total_tokens);
+      rateLimiter.reportTokens(data.usage.total_tokens);
     }
 
     return results;
@@ -972,7 +1005,12 @@ export class EmbeddingClient {
    * 获取速率限制器状态（用于调试）
    */
   getRateLimiterStatus(): ReturnType<RateLimitController['getStatus']> {
-    return this.rateLimiter.getStatus();
+    const firstKey = this.apiKeyPool[0];
+    const limiter = firstKey ? this.rateLimitersByKey.get(firstKey) : null;
+    if (!limiter) {
+      throw new Error('当前没有可用的 Embedding 速率限制器');
+    }
+    return limiter.getStatus();
   }
 }
 

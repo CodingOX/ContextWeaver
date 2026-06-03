@@ -77,15 +77,22 @@ test('resetEmbeddingClient 后应返回新实例', async () => {
 test('resetRateLimitController 后新客户端应获得干净状态', async () => {
   resetRateLimitController();
   const first = new EmbeddingClient({ ...TEST_CONFIG, maxConcurrency: 3 });
-  (first as any).rateLimiter.getStatus = () => ({
+  const firstLimiter = (first as any).rateLimitersByKey.get(TEST_CONFIG.apiKey);
+  firstLimiter.getStatus = () => ({
     isPaused: false,
     currentConcurrency: 1,
     maxConcurrency: 3,
     activeRequests: 0,
     backoffMs: 20000,
+    consecutiveSuccesses: 0,
+    rpmAvailable: null,
+    tpmAvailable: null,
+    estimatedTokensPerRequest: 4000,
+    tokenBucketWaits: 0,
+    totalTokenBucketWaitMs: 0,
   });
-  (first as any).rateLimiter['currentConcurrency'] = 1;
-  (first as any).rateLimiter['backoffMs'] = 20000;
+  firstLimiter['currentConcurrency'] = 1;
+  firstLimiter['backoffMs'] = 20000;
 
   const degraded = first.getRateLimiterStatus();
   assert.equal(degraded.currentConcurrency, 1);
@@ -145,8 +152,9 @@ test('scan 新轮次应刷新 EmbeddingClient 与 RateLimitController 状态', a
     resetRateLimitController();
 
     const stale = getEmbeddingClient();
-    (stale as any).rateLimiter['currentConcurrency'] = 1;
-    (stale as any).rateLimiter['backoffMs'] = 20000;
+    const staleLimiter = (stale as any).rateLimitersByKey.get(TEST_CONFIG.apiKey);
+    staleLimiter['currentConcurrency'] = 1;
+    staleLimiter['backoffMs'] = 20000;
 
     await scan(root, { vectorIndex: true });
 
@@ -161,8 +169,8 @@ test('scan 新轮次应刷新 EmbeddingClient 与 RateLimitController 状态', a
         activeRequests: 0,
         backoffMs: 5000,
         consecutiveSuccesses: 0,
-        rpmAvailable: null,
-        tpmAvailable: null,
+        rpmAvailable: 2000,
+        tpmAvailable: 500000,
         estimatedTokensPerRequest: 4000,
         tokenBucketWaits: 0,
         totalTokenBucketWaitMs: 0,
