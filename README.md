@@ -79,7 +79,7 @@ cr init
 
 初始化后编辑 `~/.coderecall/.env`，填写 6 个必需变量：
 
-> **API Key 获取**：推荐到 [硅基流动（SiliconFlow）](https://siliconflow.cn) 注册账户，完成实名认证后 Embedding 和 Reranker API 均可免费使用。用量较大时可认证多个账户，每个账户创建一个Key，利用 `逗号分隔` 实现请求级轮转，避免触发频率限制。
+> **API Key 获取**：推荐到 [硅基流动（SiliconFlow）](https://cloud.siliconflow.cn/me/account/ak) 注册账户，完成实名认证 创建免费的 Key 就可以了。用量较大时可认证多个账户，每个账户创建一个Key，利用 `逗号分隔` 实现请求级轮转，避免触发频率限制。
 
 ```env
 # Embedding API（必需）
