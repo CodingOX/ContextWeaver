@@ -440,13 +440,16 @@ export function searchChunksFts(
 export function batchUpsertFileFts(
   db: Database.Database,
   files: Array<{ path: string; content: string }>,
+  mode: 'upsert' | 'rebuild' = 'upsert',
 ): void {
-  const deleteFts = db.prepare('DELETE FROM files_fts WHERE path = ?');
   const insertFts = db.prepare('INSERT INTO files_fts(path, content) VALUES (?, ?)');
+  const deleteFts = mode === 'upsert' ? db.prepare('DELETE FROM files_fts WHERE path = ?') : null;
 
   const transaction = db.transaction((items: Array<{ path: string; content: string }>) => {
     for (const item of items) {
-      deleteFts.run(item.path);
+      if (deleteFts) {
+        deleteFts.run(item.path);
+      }
       insertFts.run(item.path, item.content);
     }
   });

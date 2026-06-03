@@ -215,7 +215,11 @@ export function clearVectorIndexHash(db: Database.Database, paths: string[]): vo
 /**
  * 批量插入/更新文件记录
  */
-export function batchUpsert(db: Database.Database, files: FileMeta[]): void {
+export function batchUpsert(
+  db: Database.Database,
+  files: FileMeta[],
+  options: { ftsMode?: 'upsert' | 'rebuild' } = {},
+): void {
   const insert = db.prepare(`
     INSERT INTO files (path, hash, mtime, size, content, language)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -245,7 +249,7 @@ export function batchUpsert(db: Database.Database, files: FileMeta[]): void {
     }
   }
   if (ftsFiles.length > 0) {
-    batchUpsertFileFts(db, ftsFiles);
+    batchUpsertFileFts(db, ftsFiles, options.ftsMode ?? 'upsert');
   }
 }
 
@@ -300,16 +304,20 @@ export function batchDelete(db: Database.Database, paths: string[]): void {
  */
 export function clear(db: Database.Database): void {
   db.exec('DELETE FROM files');
+  // 强制重建时 FTS 表可能已有大量 trigram/chunk 索引。
+  // 直接 DELETE 会逐步清理 FTS shadow table，明显慢于 drop 后重建空表。
   try {
-    db.exec('DELETE FROM files_fts');
+    db.exec('DROP TABLE IF EXISTS files_fts');
   } catch {
     // FTS 表可能尚未初始化，忽略即可
   }
   try {
-    db.exec('DELETE FROM chunks_fts');
+    db.exec('DROP TABLE IF EXISTS chunks_fts');
   } catch {
     // FTS 表可能尚未初始化，忽略即可
   }
+  initFilesFts(db);
+  initChunksFts(db);
 }
 
 // ===========================================

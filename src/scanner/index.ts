@@ -21,7 +21,7 @@ import { logger } from '../utils/logger.js';
 import { closeAllVectorStores } from '../vectorStore/index.js';
 import { crawl } from './crawler.js';
 import { initFilter } from './filter.js';
-import { type ProcessResult, processFiles } from './processor.js';
+import { createProcessTiming, type ProcessResult, processFiles } from './processor.js';
 
 /**
  * 扫描结果统计
@@ -74,8 +74,11 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
   const db = initDb(projectId);
 
   try {
+    const scanStartedAt = Date.now();
     // 初始化过滤器
+    const initFilterStartedAt = Date.now();
     await initFilter(rootPath);
+    const initFilterElapsedMs = Date.now() - initFilterStartedAt;
 
     // 检查 embedding dimensions 是否变化
     let forceReindex = options.force ?? false;
@@ -96,41 +99,64 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
     }
 
     // 如果强制重新索引，清空数据库和向量索引
+    let forceClearElapsedMs = 0;
+    let vectorClearElapsedMs = 0;
     if (forceReindex) {
+      const forceClearStartedAt = Date.now();
       clear(db);
 
       // 清空向量索引
       if (options.vectorIndex !== false) {
         const embeddingConfig = getEmbeddingConfig();
         const indexer = await getIndexer(projectId, embeddingConfig.dimensions);
+        const vectorClearStartedAt = Date.now();
         await indexer.clear();
+        vectorClearElapsedMs = Date.now() - vectorClearStartedAt;
       }
+      forceClearElapsedMs = Date.now() - forceClearStartedAt;
+      logger.info(
+        {
+          forceClearMs: forceClearElapsedMs,
+          vectorClearMs: vectorClearElapsedMs,
+        },
+        '强制重建清理耗时',
+      );
     }
 
     // 获取已知的文件元数据
+    const knownFilesStartedAt = Date.now();
     const knownFiles = getAllFileMeta(db);
+    const knownFilesElapsedMs = Date.now() - knownFilesStartedAt;
 
     // 扫描文件系统
+    const crawlStartedAt = Date.now();
     const filePaths = await crawl(rootPath);
+    const crawlElapsedMs = Date.now() - crawlStartedAt;
     // 使用 path.relative 确保跨平台兼容，并标准化为 / 分隔符
     const scannedPaths = new Set(
       filePaths.map((p) => path.relative(rootPath, p).replace(/\\/g, '/')),
     );
 
     // 处理文件（文件处理很快，不需要报告进度）
+    const processStartedAt = Date.now();
+    const processTiming = createProcessTiming();
     const results: ProcessResult[] = [];
     const batchSize = 100;
     for (let i = 0; i < filePaths.length; i += batchSize) {
       const batch = filePaths.slice(i, i + batchSize);
-      const batchResults = await processFiles(rootPath, batch, knownFiles);
+      const batchResults = await processFiles(rootPath, batch, knownFiles, {
+        timing: processTiming,
+      });
       results.push(...batchResults);
     }
+    const processElapsedMs = Date.now() - processStartedAt;
 
     // 准备数据库操作
     const toAdd: FileMeta[] = [];
     const toUpdateMtime: Array<{ path: string; mtime: number }> = [];
     const deletedPaths: string[] = [];
 
+    const classifyStartedAt = Date.now();
     for (const result of results) {
       switch (result.status) {
         case 'added':
@@ -159,8 +185,10 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
           break;
       }
     }
+    const classifyElapsedMs = Date.now() - classifyStartedAt;
 
     // 处理已删除的文件
+    const deletedScanStartedAt = Date.now();
     const allIndexedPaths = getAllPaths(db);
     for (const indexedPath of allIndexedPaths) {
       // 标准化路径分隔符进行比较
@@ -169,13 +197,17 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
         deletedPaths.push(indexedPath);
       }
     }
+    const deletedScanElapsedMs = Date.now() - deletedScanStartedAt;
 
     // 增量更新
-    batchUpsert(db, toAdd);
+    const dbSyncStartedAt = Date.now();
+    batchUpsert(db, toAdd, { ftsMode: forceReindex ? 'rebuild' : 'upsert' });
     batchUpdateMtime(db, toUpdateMtime);
     batchDelete(db, deletedPaths);
+    const dbSyncElapsedMs = Date.now() - dbSyncStartedAt;
 
     // 统计结果
+    const statsStartedAt = Date.now();
     const stats: ScanStats = {
       totalFiles: filePaths.length,
       added: results.filter((r) => r.status === 'added').length,
@@ -185,6 +217,26 @@ export async function scan(rootPath: string, options: ScanOptions = {}): Promise
       skipped: results.filter((r) => r.status === 'skipped').length,
       errors: results.filter((r) => r.status === 'error').length,
     };
+    const statsElapsedMs = Date.now() - statsStartedAt;
+
+    logger.info(
+      {
+        files: filePaths.length,
+        initFilterMs: initFilterElapsedMs,
+        forceClearMs: forceClearElapsedMs,
+        vectorClearMs: vectorClearElapsedMs,
+        knownFilesMs: knownFilesElapsedMs,
+        crawlMs: crawlElapsedMs,
+        processMs: processElapsedMs,
+        processDetail: processTiming,
+        classifyMs: classifyElapsedMs,
+        deletedScanMs: deletedScanElapsedMs,
+        dbSyncMs: dbSyncElapsedMs,
+        statsMs: statsElapsedMs,
+        preVectorTotalMs: Date.now() - scanStartedAt,
+      },
+      '扫描阶段耗时',
+    );
 
     // ===== 向量索引 =====
     if (options.vectorIndex !== false) {

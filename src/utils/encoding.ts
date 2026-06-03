@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { isUtf8 } from 'node:buffer';
 import chardet from 'chardet';
 import iconv from 'iconv-lite';
 
@@ -91,6 +92,15 @@ export async function readFileWithEncoding(filePath: string): Promise<{
 
   // 检测编码
   const bom = detectBOM(buffer);
+  if (!bom && isUtf8(buffer)) {
+    // 绝大多数源码都是 UTF-8/ASCII；先走 Node 原生校验快路径，避免每个文件都跑 chardet。
+    return {
+      content: buffer.toString('utf-8'),
+      encoding: 'utf-8',
+      originalEncoding: 'UTF-8',
+    };
+  }
+
   let encoding = bom;
 
   if (!encoding) {
