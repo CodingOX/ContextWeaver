@@ -8,7 +8,7 @@
   <em>Semantic Code Retrieval for AI Agents — Hybrid Search • Graph Expansion • Token-Aware Packing</em>
 </p>
 
-> **致谢**：本项目基于 [hsingjui/CodeRecall](https://github.com/hsingjui/CodeRecall) 修改和扩展而来。衷心感谢原作者 [hsingjui](https://github.com/hsingjui) 的开创性工作与开源精神，为 CodeRecall 打下了坚实基础。我们将在此基础上持续演进，为 AI 辅助编码社区提供更完善的代码库上下文检索体验。
+> **致谢**：本项目基于 [hsingjui/ContextWeaver](https://github.com/hsingjui/ContextWeaver) 修改和扩展而来。衷心感谢原作者 [hsingjui](https://github.com/hsingjui) 的开创性工作与开源精神，为 CodeRecall 打下了坚实基础。我们将在此基础上持续演进，为 AI 辅助编码社区提供更完善的代码库上下文检索体验。
 
 ---
 
