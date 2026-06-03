@@ -95,3 +95,52 @@ bash scripts/publish-plugins.sh --version <x.y.z>
 > 发版补充文档：
 > - 全量本地手动发版：`docs/release/local-manual-release.md`
 > - 仅主包发版：`docs/release/main-package-only-release.md`
+
+## 6. 环境变量配置参考
+
+> 本节是完整配置参考，面向开发者和需要精细调优的用户。终端用户只需按 README "初始化配置" 小节填写 6 个必需变量即可。
+
+配置文件位置：`~/.coderecall/.env`（生产环境默认；开发环境会先尝试 `cwd/.env`，再回退到 `~/.coderecall/.env`）。
+
+### 6.1 必需变量
+
+| 变量名 | 描述 |
+|--------|------|
+| `EMBEDDINGS_API_KEYS` | Embedding API Key，逗号分隔多 Key 轮转 |
+| `EMBEDDINGS_BASE_URL` | Embedding API 地址 |
+| `EMBEDDINGS_MODEL` | Embedding 模型名称 |
+| `RERANK_API_KEYS` | Reranker API Key，逗号分隔多 Key 轮转 |
+| `RERANK_BASE_URL` | Reranker API 地址 |
+| `RERANK_MODEL` | Reranker 模型名称 |
+
+### 6.2 常用可选变量
+
+| 变量名 | 默认值 | 描述 |
+|--------|--------|------|
+| `EMBEDDINGS_DIMENSIONS` | 1024 | 向量维度（与模型匹配） |
+| `CODE_RECALL_PROFILE` | balanced | 索引分片档位：`quality` / `balanced` / `performance` |
+| `EMBEDDINGS_RATE_PROFILE` | balanced | Embedding 限流档位：`safe` / `balanced` / `fast` |
+| `RERANK_TOP_N` | 20 | Rerank 返回数量 |
+| `INCLUDE_PATTERNS` | - | 额外包含模式，用于显式纳入未知扩展名（逗号分隔） |
+| `IGNORE_PATTERNS` | - | 额外忽略模式（逗号分隔） |
+| `LOG_LEVEL` | info | 日志级别；设 `debug` 可输出详细检索日志到 `~/.coderecall/logs/app.YYYY-MM-DD.log` |
+
+### 6.3 多 Key 轮转与旧变量兼容
+
+- 推荐使用 `_KEYS` 后缀变量（逗号分隔多 Key），在限流压力大时通过请求级轮转分摊压力。
+- 旧变量名 `EMBEDDINGS_API_KEY` 和 `RERANK_API_KEY` 运行时仍兼容；当 `_KEY` 与 `_KEYS` 同时存在时，`_KEYS` 优先。
+
+### 6.4 高级限流覆盖
+
+如需精确控制限流（例如对接自有 API 网关的配额），可继续使用以下变量；未配置时由 `EMBEDDINGS_RATE_PROFILE` 自动给出默认值：
+
+| 变量名 | 描述 |
+|--------|------|
+| `EMBEDDINGS_MAX_CONCURRENCY` | 全局最大并发 |
+| `EMBEDDINGS_MAX_RPM` | 全局每分钟请求上限 |
+| `EMBEDDINGS_MAX_TPM` | 全局每分钟 Token 上限 |
+| `EMBEDDINGS_KEY_MAX_CONCURRENCIES` | 按 Key 对齐的并发上限列表（逗号分隔，与 `_KEYS` 顺序对齐） |
+| `EMBEDDINGS_KEY_MAX_RPMS` | 按 Key 对齐的 RPM 列表 |
+| `EMBEDDINGS_KEY_MAX_TPMS` | 按 Key 对齐的 TPM 列表 |
+
+源码真相：`src/config.ts` 的 `DEFAULT_ENV_TEMPLATE` 与 `getEmbeddingConfig()` / `getRerankerConfig()`。
