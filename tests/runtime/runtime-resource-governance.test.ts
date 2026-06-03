@@ -14,10 +14,7 @@ import {
   __resetTokenBoundaryRegexCacheForTest,
   getTokenBoundaryRegexForTest,
 } from '../../src/search/SearchService.js';
-import {
-  __getOpenLogStreamCountForTest,
-  __shutdownLoggerForTest,
-} from '../../src/utils/logger.js';
+import { __getOpenLogStreamCountForTest, __shutdownLoggerForTest } from '../../src/utils/logger.js';
 import { VectorStore } from '../../src/vectorStore/index.js';
 
 const TEST_CONFIG = {
@@ -35,6 +32,13 @@ async function withEmbeddingEnv<T>(fn: () => T | Promise<T>): Promise<T> {
   const prevModel = process.env.EMBEDDINGS_MODEL;
   const prevDimensions = process.env.EMBEDDINGS_DIMENSIONS;
   const prevMaxConcurrency = process.env.EMBEDDINGS_MAX_CONCURRENCY;
+  const prevMaxRpm = process.env.EMBEDDINGS_MAX_RPM;
+  const prevMaxTpm = process.env.EMBEDDINGS_MAX_TPM;
+  const prevKeyMaxConcurrencies = process.env.EMBEDDINGS_KEY_MAX_CONCURRENCIES;
+  const prevKeyMaxRpms = process.env.EMBEDDINGS_KEY_MAX_RPMS;
+  const prevKeyMaxTpms = process.env.EMBEDDINGS_KEY_MAX_TPMS;
+  const prevRateProfile = process.env.EMBEDDINGS_RATE_PROFILE;
+  const prevCodeRecallProfile = process.env.CODE_RECALL_PROFILE;
 
   process.env.EMBEDDINGS_API_KEY = TEST_CONFIG.apiKey;
   process.env.EMBEDDINGS_API_KEYS = TEST_CONFIG.apiKey;
@@ -42,6 +46,13 @@ async function withEmbeddingEnv<T>(fn: () => T | Promise<T>): Promise<T> {
   process.env.EMBEDDINGS_MODEL = TEST_CONFIG.model;
   process.env.EMBEDDINGS_DIMENSIONS = String(TEST_CONFIG.dimensions);
   process.env.EMBEDDINGS_MAX_CONCURRENCY = String(TEST_CONFIG.maxConcurrency);
+  process.env.EMBEDDINGS_MAX_RPM = '2000';
+  process.env.EMBEDDINGS_MAX_TPM = '500000';
+  delete process.env.EMBEDDINGS_KEY_MAX_CONCURRENCIES;
+  delete process.env.EMBEDDINGS_KEY_MAX_RPMS;
+  delete process.env.EMBEDDINGS_KEY_MAX_TPMS;
+  process.env.EMBEDDINGS_RATE_PROFILE = 'balanced';
+  process.env.CODE_RECALL_PROFILE = 'balanced';
 
   try {
     return await fn();
@@ -58,6 +69,20 @@ async function withEmbeddingEnv<T>(fn: () => T | Promise<T>): Promise<T> {
     else process.env.EMBEDDINGS_DIMENSIONS = prevDimensions;
     if (prevMaxConcurrency === undefined) delete process.env.EMBEDDINGS_MAX_CONCURRENCY;
     else process.env.EMBEDDINGS_MAX_CONCURRENCY = prevMaxConcurrency;
+    if (prevMaxRpm === undefined) delete process.env.EMBEDDINGS_MAX_RPM;
+    else process.env.EMBEDDINGS_MAX_RPM = prevMaxRpm;
+    if (prevMaxTpm === undefined) delete process.env.EMBEDDINGS_MAX_TPM;
+    else process.env.EMBEDDINGS_MAX_TPM = prevMaxTpm;
+    if (prevKeyMaxConcurrencies === undefined) delete process.env.EMBEDDINGS_KEY_MAX_CONCURRENCIES;
+    else process.env.EMBEDDINGS_KEY_MAX_CONCURRENCIES = prevKeyMaxConcurrencies;
+    if (prevKeyMaxRpms === undefined) delete process.env.EMBEDDINGS_KEY_MAX_RPMS;
+    else process.env.EMBEDDINGS_KEY_MAX_RPMS = prevKeyMaxRpms;
+    if (prevKeyMaxTpms === undefined) delete process.env.EMBEDDINGS_KEY_MAX_TPMS;
+    else process.env.EMBEDDINGS_KEY_MAX_TPMS = prevKeyMaxTpms;
+    if (prevRateProfile === undefined) delete process.env.EMBEDDINGS_RATE_PROFILE;
+    else process.env.EMBEDDINGS_RATE_PROFILE = prevRateProfile;
+    if (prevCodeRecallProfile === undefined) delete process.env.CODE_RECALL_PROFILE;
+    else process.env.CODE_RECALL_PROFILE = prevCodeRecallProfile;
   }
 }
 
