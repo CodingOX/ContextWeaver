@@ -1,6 +1,7 @@
 ---
 name: coderecall-search
-description: Semantic code search for ANY non-trivial code exploration task. Use as the
+description: >-
+  Semantic code search for ANY non-trivial code exploration task. Use as the
   DEFAULT when you need to find code by describing functionality, understand how a
   feature is implemented, locate relevant source files, or explore project architecture.
   Triggers on: "find where X happens", "how is X implemented", "where is the X logic",
