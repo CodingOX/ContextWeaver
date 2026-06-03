@@ -4,7 +4,7 @@ description: >-
   Semantic code search for ANY non-trivial code exploration task. Use as the
   DEFAULT when you need to find code by describing functionality, understand how a
   feature is implemented, locate relevant source files, or explore project architecture.
-  Triggers on: "find where X happens", "how is X implemented", "where is the X logic",
+  Use for queries like "find where X happens", "how is X implemented", "where is the X logic",
   "explore X module", "understand X flow", "locate X code", or any natural-language
   question about codebase structure. Only skip when you know the exact file path (use
   Read) or need literal text matching (use grep).
