@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { ensureFeedbackTables } from '../search/feedbackLoop.js';
@@ -10,8 +9,7 @@ import {
   initChunksFts,
   initFilesFts,
 } from '../search/fts.js';
-
-const BASE_DIR = path.join(os.homedir(), '.coderecall');
+import { getProjectDataDir, getProjectDbPath } from '../utils/paths.js';
 
 /**
  * 文件元数据接口
@@ -77,12 +75,12 @@ export function generateProjectId(projectPath: string): string {
  */
 export function initDb(projectId: string): Database.Database {
   // 确保目录存在
-  const projectDir = path.join(BASE_DIR, projectId);
+  const projectDir = getProjectDataDir(projectId);
   if (!fs.existsSync(projectDir)) {
     fs.mkdirSync(projectDir, { recursive: true });
   }
 
-  const dbPath = path.join(projectDir, 'index.db');
+  const dbPath = getProjectDbPath(projectId);
   const db = new Database(dbPath);
   db.pragma('busy_timeout = 5000');
   db.pragma('journal_mode = WAL');

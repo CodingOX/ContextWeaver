@@ -8,11 +8,8 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import * as lancedb from '@lancedb/lancedb';
-
-const BASE_DIR = path.join(os.homedir(), '.coderecall');
+import { getProjectDataDir, getProjectVectorDir } from '../utils/paths.js';
 
 // ===========================================
 // 类型定义
@@ -70,7 +67,7 @@ export class VectorStore {
 
   constructor(projectId: string, vectorDim = 1024) {
     this.projectId = projectId;
-    this.dbPath = path.join(BASE_DIR, projectId, 'vectors.lance');
+    this.dbPath = getProjectVectorDir(projectId);
     this.vectorDim = vectorDim;
   }
 
@@ -81,7 +78,7 @@ export class VectorStore {
     if (this.db) return;
 
     // 确保目录存在
-    const projectDir = path.join(BASE_DIR, this.projectId);
+    const projectDir = getProjectDataDir(this.projectId);
     if (!fs.existsSync(projectDir)) {
       fs.mkdirSync(projectDir, { recursive: true });
     }

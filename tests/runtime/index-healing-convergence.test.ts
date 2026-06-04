@@ -1,23 +1,22 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 import {
   batchUpsert,
   clear,
   closeDb,
+  type FileMeta,
   getFilesNeedingVectorIndex,
   initDb,
-  type FileMeta,
 } from '../../src/db/index.js';
-import { initChunksFts, initFilesFts } from '../../src/search/fts.js';
 import { closeAllIndexers, getIndexer } from '../../src/indexer/index.js';
 import type { ProcessResult } from '../../src/scanner/processor.js';
+import { initChunksFts, initFilesFts } from '../../src/search/fts.js';
+import { getProjectDataDir } from '../../src/utils/paths.js';
 import { closeAllVectorStores } from '../../src/vectorStore/index.js';
 
 function projectDir(projectId: string): string {
-  return path.join(os.homedir(), '.coderecall', projectId);
+  return getProjectDataDir(projectId);
 }
 
 test('无 chunk 文件应在索引后收敛，避免重复进入 healing 集合', async () => {

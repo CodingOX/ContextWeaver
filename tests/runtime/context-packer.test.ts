@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
-import { batchUpsert, closeDb, initDb, type FileMeta } from '../../src/db/index.js';
+import { batchUpsert, closeDb, type FileMeta, initDb } from '../../src/db/index.js';
 import { ContextPacker } from '../../src/search/ContextPacker.js';
 import { DEFAULT_CONFIG } from '../../src/search/config.js';
 import type { ScoredChunk } from '../../src/search/types.js';
+import { getProjectDataDir } from '../../src/utils/paths.js';
 
 function projectDir(projectId: string): string {
-  return path.join(os.homedir(), '.coderecall', projectId);
+  return getProjectDataDir(projectId);
 }
 
 function buildChunk(args: {

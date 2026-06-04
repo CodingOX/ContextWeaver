@@ -10,7 +10,6 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { DEFAULT_ENV_TEMPLATE } from '../../config.js';
@@ -22,6 +21,7 @@ import { createFilePathFilter, normalizeFilePathFilterConfig } from '../../searc
 import { buildQueryChannels } from '../../search/queryChannels.js';
 import type { ContextPack, ScoredChunk, SearchConfig, Segment } from '../../search/types.js';
 import { logger } from '../../utils/logger.js';
+import { getConfigBaseDir, getDefaultEnvFilePath, getProjectDbPath } from '../../utils/paths.js';
 import type { ChunkRecord } from '../../vectorStore/index.js';
 
 // 工具 Schema (暴露给 LLM)
@@ -114,7 +114,6 @@ const ZEN_CONFIG_OVERRIDE: Partial<SearchConfig> = {
 // 自动索引逻辑
 // ===========================================
 
-const BASE_DIR = path.join(os.homedir(), '.coderecall');
 const INDEX_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_RAW_TOP_N = 5;
 const MAX_RAW_TOP_N = 20;
@@ -242,11 +241,11 @@ interface RawCodeBlock {
 /**
  * 确保默认 .env 文件存在
  *
- * 如果 ~/.coderecall/.env 不存在，则创建包含默认配置的文件
+ * 如果默认配置目录下的 .env 不存在，则创建包含默认配置的文件
  */
 async function ensureDefaultEnvFile(): Promise<void> {
-  const configDir = BASE_DIR;
-  const envFile = path.join(configDir, '.env');
+  const configDir = getConfigBaseDir();
+  const envFile = getDefaultEnvFilePath();
 
   // 检查文件是否已存在
   if (fs.existsSync(envFile)) {
@@ -268,7 +267,7 @@ async function ensureDefaultEnvFile(): Promise<void> {
  * 检测代码库是否已初始化（数据库是否存在）
  */
 function isProjectIndexed(projectId: string): boolean {
-  const dbPath = path.join(BASE_DIR, projectId, 'index.db');
+  const dbPath = getProjectDbPath(projectId);
   return fs.existsSync(dbPath);
 }
 
@@ -852,7 +851,7 @@ function formatEnvMissingResponse(missingVars: string[]): {
   content: Array<{ type: 'text'; text: string }>;
   isError: true;
 } {
-  const configPath = '~/.coderecall/.env';
+  const configPath = getDefaultEnvFilePath();
 
   const text = `## ⚠️ 配置缺失
 

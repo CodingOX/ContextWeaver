@@ -81,3 +81,43 @@ test('search 配置缺失时返回非零退出码', { concurrency: false }, () =
     fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 });
+
+test('search 在日志目录不可写时不应因 logger 崩溃', { concurrency: false }, () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coderecall-cli-readonly-logs-'));
+  const logDir = path.join(fakeHome, '.coderecall', 'logs');
+
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.chmodSync(logDir, 0o555);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        'src/index.ts',
+        'search',
+        '--repo-path',
+        process.cwd(),
+        '--information-request',
+        '定位测试入口',
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          HOME: fakeHome,
+          PATH: process.env.PATH ?? '',
+          NODE_ENV: 'production',
+        },
+      },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /ERR_STREAM_DESTROYED/);
+    assert.match(result.stdout, /配置缺失/);
+  } finally {
+    fs.chmodSync(logDir, 0o755);
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});

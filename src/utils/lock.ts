@@ -5,11 +5,10 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { logger } from './logger.js';
+import { getProjectLockPath } from './paths.js';
 
-const BASE_DIR = path.join(os.homedir(), '.coderecall');
 const LOCK_CHECK_INTERVAL_MS = 100; // 检查间隔
 const LOCK_WRITE_GRACE_MS = 2000; // 锁文件写入宽限期，避免误删刚创建的锁
 
@@ -35,7 +34,7 @@ function getLockAgeMs(lockPath: string): number | null {
  * 获取锁文件路径
  */
 function getLockFilePath(projectId: string): string {
-  return path.join(BASE_DIR, projectId, 'index.lock');
+  return getProjectLockPath(projectId);
 }
 
 /**

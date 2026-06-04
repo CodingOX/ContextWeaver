@@ -3,7 +3,6 @@
 import './config.js';
 
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cac from 'cac';
@@ -15,6 +14,7 @@ import {
   repairChunkIndexConsistency,
 } from './search/chunkIndexConsistency.js';
 import { logger } from './utils/logger.js';
+import { getConfigBaseDir } from './utils/paths.js';
 
 // 读取 package.json 获取版本号
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +30,7 @@ if (process.argv.includes('-v') || process.argv.includes('--version')) {
 }
 
 cli.command('init', '初始化 CodeRecall 配置').action(async () => {
-  const configDir = path.join(os.homedir(), '.coderecall');
+  const configDir = getConfigBaseDir();
   const envFile = path.join(configDir, '.env');
 
   logger.info('开始初始化 CodeRecall...');

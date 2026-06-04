@@ -8,6 +8,7 @@ import type { ProcessedChunk } from '../../src/chunking/types.js';
 import { batchUpsert, closeDb, getFilesNeedingVectorIndex, initDb } from '../../src/db/index.js';
 import { Indexer, splitIntoChunkBatches } from '../../src/indexer/index.js';
 import { logger } from '../../src/utils/logger.js';
+import { getProjectDataDir } from '../../src/utils/paths.js';
 
 const TEST_CONFIG = {
   apiKey: 'key-alpha',
@@ -295,7 +296,7 @@ test('batchIndex Embedding 中间批次失败后继续处理后续批次（断�
     assert.deepEqual(getFilesNeedingVectorIndex(db), ['b.ts']);
   } finally {
     closeDb(db);
-    await fs.rm(path.join(os.homedir(), '.coderecall', projectId), {
+    await fs.rm(getProjectDataDir(projectId), {
       recursive: true,
       force: true,
     });
@@ -389,7 +390,7 @@ test('batchIndex 子批次写入 LanceDB 失败时不应删除旧向量', async 
     assert.deepEqual(getFilesNeedingVectorIndex(db).sort(), ['old-a.ts', 'old-b.ts']);
   } finally {
     closeDb(db);
-    await fs.rm(path.join(os.homedir(), '.coderecall', projectId), {
+    await fs.rm(getProjectDataDir(projectId), {
       recursive: true,
       force: true,
     });
@@ -473,7 +474,7 @@ test('batchIndex 同一 outer batch 内应聚合写入 LanceDB 并按子批次�
     assert.deepEqual(result, { success: 3, errors: 0 });
   } finally {
     closeDb(db);
-    await fs.rm(path.join(os.homedir(), '.coderecall', projectId), {
+    await fs.rm(getProjectDataDir(projectId), {
       recursive: true,
       force: true,
     });

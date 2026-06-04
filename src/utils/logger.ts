@@ -1,12 +1,12 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
 import pino from 'pino';
 import { isDev, isMcpMode } from '../config.js';
+import { getLogDir } from './paths.js';
 
 const logLevel = isDev ? 'debug' : 'info';
-const logDir = path.join(os.homedir(), '.coderecall', 'logs');
+const logDir = getLogDir();
 const LOG_RETENTION_DAYS = 7;
 const managedLogStreams = new Set<fs.WriteStream>();
 
@@ -85,12 +85,35 @@ function cleanupOldLogs(dir: string): void {
 function createFormattedStream(filePath: string): Writable {
   const writeStream = fs.createWriteStream(filePath, { flags: 'a' });
   managedLogStreams.add(writeStream);
+  let fileStreamAvailable = true;
 
   const cleanup = () => {
+    fileStreamAvailable = false;
     managedLogStreams.delete(writeStream);
   };
   writeStream.once('close', cleanup);
   writeStream.once('error', cleanup);
+
+  const safeWrite = (payload: string, callback: (error?: Error | null) => void): void => {
+    // 日志文件在受限环境中可能因 EPERM 直接失效；
+    // 一旦底层流已关闭/销毁，后续日志必须降级为静默跳过，避免 MCP 请求被日志本身打崩。
+    if (
+      !fileStreamAvailable ||
+      writeStream.closed ||
+      writeStream.destroyed ||
+      !writeStream.writable
+    ) {
+      callback();
+      return;
+    }
+
+    writeStream.write(payload, (error?: Error | null) => {
+      if (error) {
+        fileStreamAvailable = false;
+      }
+      callback(error ? null : undefined);
+    });
+  };
 
   return new Writable({
     write(
@@ -113,16 +136,26 @@ function createFormattedStream(filePath: string): Writable {
           line += ` ${JSON.stringify(extra)}`;
         }
 
-        writeStream.write(`${line}\n`, callback);
+        safeWrite(`${line}\n`, callback);
       } catch {
-        writeStream.write(chunk.toString(), callback);
+        safeWrite(chunk.toString(), callback);
       }
     },
     final(callback) {
+      if (
+        !fileStreamAvailable ||
+        writeStream.closed ||
+        writeStream.destroyed ||
+        !writeStream.writable
+      ) {
+        callback();
+        return;
+      }
       writeStream.end(callback);
     },
     destroy(error, callback) {
-      if (!writeStream.closed) {
+      fileStreamAvailable = false;
+      if (!writeStream.closed && !writeStream.destroyed) {
         writeStream.destroy();
       }
       callback(error);

@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
-import { batchUpsert, clear, closeDb, initDb, type FileMeta } from '../../src/db/index.js';
+import { batchUpsert, clear, closeDb, type FileMeta, initDb } from '../../src/db/index.js';
+import { getProjectDataDir } from '../../src/utils/paths.js';
 
 function projectDir(projectId: string): string {
-  return path.join(os.homedir(), '.coderecall', projectId);
+  return getProjectDataDir(projectId);
 }
 
 test('clear 后的全量 batchUpsert 应重建 files_fts 且记录数正确', async () => {

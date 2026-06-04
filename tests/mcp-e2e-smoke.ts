@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { getDefaultEnvFilePath, getPreferredHomeEnvFilePath } from '../src/utils/paths.js';
 
 interface CaseItem {
   name: string;
@@ -53,15 +54,16 @@ async function loadRuntimeConfig(): Promise<Record<string, string> | null> {
     return envConfig;
   }
 
-  const homeEnvPath = path.join(os.homedir(), '.coderecall', '.env');
-  try {
-    const envText = await fs.readFile(homeEnvPath, 'utf-8');
-    const fileConfig = parseEnv(envText);
-    if (hasAllRequired(fileConfig)) {
-      return fileConfig;
+  for (const envPath of [getPreferredHomeEnvFilePath(), getDefaultEnvFilePath()]) {
+    try {
+      const envText = await fs.readFile(envPath, 'utf-8');
+      const fileConfig = parseEnv(envText);
+      if (hasAllRequired(fileConfig)) {
+        return fileConfig;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   return null;
@@ -253,7 +255,11 @@ async function main() {
     const result = await runSearch(fakeRepo, fakeHome, item);
 
     assert.equal(result.code, 0, `[${item.name}] CLI 退出码异常\n${result.stderr}`);
-    assert.match(result.stdout, /Found\s+\d+\s+relevant\s+code\s+blocks/i, `[${item.name}] 无检索结果摘要`);
+    assert.match(
+      result.stdout,
+      /Found\s+\d+\s+relevant\s+code\s+blocks/i,
+      `[${item.name}] 无检索结果摘要`,
+    );
     assert.doesNotMatch(
       result.stdout,
       /code_only|--code-only/i,

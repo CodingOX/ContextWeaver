@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { withLock } from '../../src/utils/lock.js';
+import { getProjectDataDir, getProjectLockPath } from '../../src/utils/paths.js';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function lockPath(projectId: string): string {
-  return path.join(os.homedir(), '.coderecall', projectId, 'index.lock');
+  return getProjectLockPath(projectId);
 }
 
 test('失效锁应被清理并允许后续获取', async () => {
@@ -59,7 +59,7 @@ test('并发锁竞争时第二个请求应在短超时内失败', async () => {
   const afterRelease = await withLock(projectId, 'after-release', async () => 'after', 800);
   assert.equal(afterRelease, 'after');
 
-  await fs.rm(path.join(os.homedir(), '.coderecall', projectId), {
+  await fs.rm(getProjectDataDir(projectId), {
     recursive: true,
     force: true,
   });

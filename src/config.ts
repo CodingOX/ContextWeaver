@@ -5,15 +5,15 @@
  *
  * 加载策略：
  * - 开发环境 (NODE_ENV !== "production"): 加载项目根目录的 .env 文件
- * - 生产环境 (NODE_ENV === "production"): 加载 ~/.coderecall/.env 文件
+ * - 生产环境 (NODE_ENV === "production"): 加载 CodeRecall 默认配置目录下的 .env 文件
  *
  * 此模块必须在应用启动时最先导入，以确保环境变量在其他模块加载前可用。
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { getDefaultEnvFilePath, getPreferredHomeEnvFilePath } from './utils/paths.js';
 
 // 环境变量加载
 
@@ -64,14 +64,18 @@ RERANK_TOP_N=20
 `;
 
 function loadEnv(): void {
+  const preferredHomeEnvPath = getPreferredHomeEnvFilePath();
+  const fallbackEnvPath = getDefaultEnvFilePath();
   // 可能的 .env 文件路径（按优先级排序）
   const candidates = isDev
     ? [
         path.join(process.cwd(), '.env'), // 1. 当前目录（开发用）
-        path.join(os.homedir(), '.coderecall', '.env'), // 2. 用户配置目录（回退）
+        preferredHomeEnvPath, // 2. 用户配置目录（首选）
+        fallbackEnvPath, // 3. 受限环境回退目录
       ]
     : [
-        path.join(os.homedir(), '.coderecall', '.env'), // 生产环境只用用户配置
+        preferredHomeEnvPath, // 生产环境优先用户真实 HOME 配置
+        fallbackEnvPath, // 受限环境回退目录
       ];
 
   // 找到第一个存在的文件

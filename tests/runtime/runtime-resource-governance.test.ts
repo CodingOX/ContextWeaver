@@ -15,6 +15,7 @@ import {
   getTokenBoundaryRegexForTest,
 } from '../../src/search/SearchService.js';
 import { __getOpenLogStreamCountForTest, __shutdownLoggerForTest } from '../../src/utils/logger.js';
+import { getProjectDataDir } from '../../src/utils/paths.js';
 import { VectorStore } from '../../src/vectorStore/index.js';
 
 const TEST_CONFIG = {
@@ -116,8 +117,8 @@ test('resetRateLimitController 后新客户端应获得干净状态', async () =
     tokenBucketWaits: 0,
     totalTokenBucketWaitMs: 0,
   });
-  firstLimiter['currentConcurrency'] = 1;
-  firstLimiter['backoffMs'] = 20000;
+  firstLimiter.currentConcurrency = 1;
+  firstLimiter.backoffMs = 20000;
 
   const degraded = first.getRateLimiterStatus();
   assert.equal(degraded.currentConcurrency, 1);
@@ -178,8 +179,8 @@ test('scan 新轮次应刷新 EmbeddingClient 与 RateLimitController 状态', a
 
     const stale = getEmbeddingClient();
     const staleLimiter = (stale as any).rateLimitersByKey.get(TEST_CONFIG.apiKey);
-    staleLimiter['currentConcurrency'] = 1;
-    staleLimiter['backoffMs'] = 20000;
+    staleLimiter.currentConcurrency = 1;
+    staleLimiter.backoffMs = 20000;
 
     await scan(root, { vectorIndex: true });
 
@@ -208,6 +209,8 @@ test('scan 新轮次应刷新 EmbeddingClient 与 RateLimitController 状态', a
 });
 
 test('logger shutdown 后应释放已打开的日志流', async () => {
+  const projectDir = getProjectDataDir(`runtime-resource-governance-${Date.now()}`);
+  await fs.mkdir(projectDir, { recursive: true });
   assert.ok(__getOpenLogStreamCountForTest() >= 1, 'logger 初始化后应至少存在一个日志流');
   await __shutdownLoggerForTest();
   assert.equal(__getOpenLogStreamCountForTest(), 0, 'shutdown 后不应残留打开的日志流');
