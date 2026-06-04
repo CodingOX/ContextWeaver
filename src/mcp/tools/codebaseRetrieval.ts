@@ -383,7 +383,7 @@ export async function handleCodebaseRetrieval(
     exclude_languages,
   });
 
-  logger.info(
+  logger.debug(
     {
       repo_path: normalizedRepoPath,
       information_request,
@@ -394,7 +394,7 @@ export async function handleCodebaseRetrieval(
       excludeGlobs: normalizedFilterConfig.excludeGlobs,
       languageFilter,
     },
-    'MCP codebase-retrieval 调用开始',
+    'codebase-retrieval 调用开始',
   );
 
   // 0. 检查必需的环境变量是否已配置（Embedding + Reranker 都是必需的）
@@ -404,7 +404,7 @@ export async function handleCodebaseRetrieval(
   const allMissingVars = [...embeddingCheck.missingVars, ...rerankerCheck.missingVars];
 
   if (allMissingVars.length > 0) {
-    logger.warn({ missingVars: allMissingVars }, 'MCP 环境变量未配置');
+    logger.warn({ missingVars: allMissingVars }, '环境变量未配置');
     // 自动创建默认 .env 文件
     await ensureDefaultEnvFile();
     return formatEnvMissingResponse(allMissingVars);
@@ -427,7 +427,7 @@ export async function handleCodebaseRetrieval(
     technicalTerms: technical_terms,
   });
 
-  logger.info(
+  logger.debug(
     {
       projectId: projectId.slice(0, 10),
       queryChannels: channels,
@@ -438,7 +438,7 @@ export async function handleCodebaseRetrieval(
       excludeGlobs: normalizedFilterConfig.excludeGlobs,
       languageFilter,
     },
-    'MCP 查询构建',
+    '查询构建',
   );
 
   // 4. 延迟导入 SearchService（避免 MCP 启动时加载 native 模块）
@@ -459,7 +459,7 @@ export async function handleCodebaseRetrieval(
 
     // 详细日志：seeds 信息
     if (contextPack.seeds.length > 0) {
-      logger.info(
+      logger.debug(
         {
           seeds: contextPack.seeds.map((s) => ({
             file: s.filePath,
@@ -468,10 +468,10 @@ export async function handleCodebaseRetrieval(
             source: s.source,
           })),
         },
-        'MCP 搜索 seeds',
+        '搜索 seeds',
       );
     } else {
-      logger.warn('MCP 搜索无 seeds 命中');
+      logger.debug('搜索无 seeds 命中');
     }
 
     // 详细日志：扩展结果
@@ -485,12 +485,12 @@ export async function handleCodebaseRetrieval(
             score: e.score.toFixed(4),
           })),
         },
-        'MCP 扩展结果 (前5)',
+        '扩展结果 (前5)',
       );
     }
 
     // 详细日志：打包后的文件段落
-    logger.info(
+    logger.debug(
       {
         seedCount: contextPack.seeds.length,
         expandedCount: contextPack.expanded.length,
@@ -503,7 +503,7 @@ export async function handleCodebaseRetrieval(
         })),
         timingMs: contextPack.debug?.timingMs,
       },
-      'MCP codebase-retrieval 完成',
+      'codebase-retrieval 完成',
     );
 
     // 7. 写入隐式反馈事件（P4）

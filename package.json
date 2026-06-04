@@ -1,6 +1,6 @@
 {
   "name": "@alistar.max/coderecall",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A context weaving tool for LLMs",
   "license": "MIT",
   "author": "alistar.max",
