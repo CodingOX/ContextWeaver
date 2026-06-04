@@ -1,6 +1,6 @@
 {
   "name": "@alistar.max/coderecall-lang-ruby",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CodingOX/CodeRecall.git"
